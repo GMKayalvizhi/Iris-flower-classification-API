@@ -88,6 +88,22 @@ tracing, and how long the prediction took.
   "response_time_ms": 4.2
 }
 ```
+## Input Validation Strategy
+
+Input validation uses **feature-specific ranges** derived from the actual
+min/max values observed in the scikit-learn Iris dataset, rather than a
+generic numeric bound:
+
+| Feature | Min | Max |
+|---|---|---|
+| sepal_length | 4.3 | 7.9 |
+| sepal_width | 2.0 | 4.4 |
+| petal_length | 1.0 | 6.9 |
+| petal_width | 0.1 | 2.5 |
+
+These constraints are stricter than generic bounds and
+prevent individual feature values from falling outside the range
+observed during model training.
 
 ### Invalid Input — Not Just a 422, But *Why*
 

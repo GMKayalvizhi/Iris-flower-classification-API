@@ -90,9 +90,7 @@ tracing, and how long the prediction took.
 ```
 ## Input Validation Strategy
 
-Input validation uses **feature-specific ranges** derived from the actual
-min/max values observed in the scikit-learn Iris dataset, rather than a
-generic numeric bound:
+Input validation uses **feature-specific ranges** derived from the minimum and maximum values observed in the standard scikit-learn Iris dataset.
 
 | Feature | Min | Max |
 |---|---|---|

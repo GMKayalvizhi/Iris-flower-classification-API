@@ -95,6 +95,7 @@ min/max values observed in the scikit-learn Iris dataset, rather than a
 generic numeric bound:
 
 | Feature | Min | Max |
+|---|---|---|
 | sepal_length | 4.3 | 7.9 |
 | sepal_width | 2.0 | 4.4 |
 | petal_length | 1.0 | 6.9 |

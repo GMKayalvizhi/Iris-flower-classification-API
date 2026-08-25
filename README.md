@@ -251,16 +251,16 @@ once and forgotten.
 
 ### Phase 1 — Foundation
 - [x] Project planning
-- [ ] Dataset preparation
-- [ ] Model training
-- [ ] Model evaluation
-- [ ] Model serialization
+- [x] Dataset preparation
+- [x] Model training
+- [x] Model evaluation
+- [x] Model serialization
 
 ### Phase 2 — Core API
-- [ ] FastAPI application
-- [ ] Model loading
-- [ ] Prediction endpoint
-- [ ] Pydantic validation (with field-level error messages)
+- [x] FastAPI application
+- [x] Model loading
+- [x] Prediction endpoint
+- [x] Pydantic validation (with field-level error messages)
 - [ ] Error handling
 - [ ] Structured logging
 

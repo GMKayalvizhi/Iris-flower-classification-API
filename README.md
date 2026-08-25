@@ -177,15 +177,15 @@ Client
    |
    | POST /api/v1/predict
    v
-FastAPI
+FastAPI (app/main.py)
    |
    v
-Pydantic Validation
+Pydantic Validation (app/models/schemas.py)
    |
    |---- Invalid Input ----> 422 + field-level reason + request_id
    |
    v
-Random Forest Model
+Random Forest Model (loaded once at startup)
    |
    v
 Prediction + Confidence

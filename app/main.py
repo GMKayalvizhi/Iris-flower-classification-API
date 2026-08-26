@@ -26,6 +26,21 @@ app = FastAPI(lifespan=lifespan)
 def root():
     return {"message": "Iris Classification API is running"}
 
+@app.get("/health")
+def health():
+    model_loaded = "iris_classifier" in ml_models
+    if model_loaded:
+        return {
+            "status": "ok",
+            "model_loaded" : True
+        }
+    else:
+        return {
+            "status" : "degraded",
+            "model_loaded" : False
+        }
+    
+
 
 SPECIES_MAP = {
     0: "setosa",

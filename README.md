@@ -90,9 +90,7 @@ tracing, and how long the prediction took.
 ```
 ## Input Validation Strategy
 
-Input validation uses **feature-specific ranges** derived from the actual
-min/max values observed in the scikit-learn Iris dataset, rather than a
-generic numeric bound:
+Input validation uses **feature-specific ranges** derived from the minimum and maximum values observed in the standard scikit-learn Iris dataset.
 
 | Feature | Min | Max |
 |---|---|---|
@@ -179,15 +177,15 @@ Client
    |
    | POST /api/v1/predict
    v
-FastAPI
+FastAPI (app/main.py)
    |
    v
-Pydantic Validation
+Pydantic Validation (app/models/schemas.py)
    |
    |---- Invalid Input ----> 422 + field-level reason + request_id
    |
    v
-Random Forest Model
+Random Forest Model (loaded once at startup)
    |
    v
 Prediction + Confidence
@@ -253,16 +251,16 @@ once and forgotten.
 
 ### Phase 1 — Foundation
 - [x] Project planning
-- [ ] Dataset preparation
-- [ ] Model training
-- [ ] Model evaluation
-- [ ] Model serialization
+- [x] Dataset preparation
+- [x] Model training
+- [x] Model evaluation
+- [x] Model serialization
 
 ### Phase 2 — Core API
-- [ ] FastAPI application
-- [ ] Model loading
-- [ ] Prediction endpoint
-- [ ] Pydantic validation (with field-level error messages)
+- [x] FastAPI application
+- [x] Model loading
+- [x] Prediction endpoint
+- [x] Pydantic validation (with field-level error messages)
 - [ ] Error handling
 - [ ] Structured logging
 

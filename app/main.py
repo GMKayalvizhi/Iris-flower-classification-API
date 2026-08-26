@@ -3,6 +3,7 @@ from fastapi import FastAPI
 import joblib
 import numpy as np
 from app.models.schemas import IrisInput
+import uuid
 
 # This dict acts as global state accessible across the app
 ml_models = {}
@@ -61,10 +62,14 @@ def predict(input_data: IrisInput):
     ]])
 
     prediction = model.predict(features)[0]
+    probabilities = model.predict_proba(features)[0]
+    confidence = probabilities[prediction]
     species_name = SPECIES_MAP[int(prediction)]
 
     return {
         "prediction": species_name,
         "prediction_class": int(prediction),
+        "confidence_score": float(confidence),
+        "request_id": str(uuid.uuid4()),
         "input_used": input_data.model_dump()
     }

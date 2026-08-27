@@ -200,6 +200,36 @@ being dropped unnoticed.
 `500` and `400` failure paths — which are deliberately triggered in tests
 via `monkeypatch`, since they can't be reproduced with real, valid input.
 
+Structured Logging & Request Tracing
+
+Every request — successful, rejected by validation, or failed during prediction — is logged with consistent, parseable structure, to both the console and a persistent log file. print() is not used anywhere in the application; all output goes through a configured logger.
+
+Setup
+A dedicated app/logging_config.py configures a named logger (iris_api) with two handlers:
+Console handler — mirrors log output to the terminal
+RotatingFileHandler — writes to logs/app.log, capped at ~1MB per file with the last 3 files kept, so logs persist across restarts without growing unbounded
+Every log line follows the same format: timestamp, level, logger name, message — e.g. 2026-08-27 15:50:30 | INFO | iris_api | request_id=... method=POST path=/predict status=200 duration_ms=18.68
+Request tracing
+
+An @app.middleware("http") function wraps every incoming request:
+
+Generates a unique request_id (uuid4()) and attaches it to request.state, making it available inside route functions
+Times the full request (start to finish)
+Logs method, path, response status, and duration for every request, regardless of which route was hit or whether it succeeded
+Attaches the same ID to the response as an X-Request-ID header
+
+Inside /predict, the same request_id is read back from request.state and included in both the log line and the response body — so one ID connects the middleware's traffic-level log, the route's business-outcome log, the JSON response, and the response header for a single request.
+
+Log levels in use
+Level	Used for
+DEBUG	The raw feature array passed to the model, logged before inference. Intentionally filtered out under the current INFO-level logger configuration; exists for local troubleshooting and becomes visible by lowering the logger's configured level, with no code change required.
+INFO	Model load/shutdown, every request handled by the middleware (including validation rejections — the API correctly doing its job is not an error), successful predictions
+WARNING	Requests exceeding 200ms, flagged as slow without being treated as a failure
+ERROR	A ValueError or any other unexpected exception during prediction — the real error is logged here; the client only ever receives the safe, generic message described above
+Testing
+
+16 automated tests cover: validation and response-shape behavior (Task 8), plus — for Task 9 — request_id presence and consistency between the response header and body, INFO-level logging on success, ERROR-level logging on both failure paths (verified using monkeypatch combined with pytest's caplog fixture), and confirmation that non-prediction routes (e.g. /health) are logged too.
+
 ## System Architecture
 
 ```text

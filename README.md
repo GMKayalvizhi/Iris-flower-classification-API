@@ -221,13 +221,14 @@ Attaches the same ID to the response as an X-Request-ID header
 Inside /predict, the same request_id is read back from request.state and included in both the log line and the response body — so one ID connects the middleware's traffic-level log, the route's business-outcome log, the JSON response, and the response header for a single request.
 
 Log levels in use
-Level	Used for
-DEBUG	The raw feature array passed to the model, logged before inference. Intentionally filtered out under the current INFO-level logger configuration; exists for local troubleshooting and becomes visible by lowering the logger's configured level, with no code change required.
-INFO	Model load/shutdown, every request handled by the middleware (including validation rejections — the API correctly doing its job is not an error), successful predictions
-WARNING	Requests exceeding 200ms, flagged as slow without being treated as a failure
-ERROR	A ValueError or any other unexpected exception during prediction — the real error is logged here; the client only ever receives the safe, generic message described above
-Testing
+| Level | Used for |
+|---|---|
+| `DEBUG` | The raw feature array passed to the model, logged before inference. Intentionally filtered out under the current `INFO`-level logger configuration; exists for local troubleshooting and becomes visible by lowering the logger's configured level, with no code change required. |
+| `INFO` | Model load/shutdown, every request handled by the middleware (including validation rejections — the API correctly doing its job is not an error), successful predictions |
+| `WARNING` | Requests exceeding 200ms, flagged as slow without being treated as a failure |
+| `ERROR` | A `ValueError` or any other unexpected exception during prediction — the real error is logged here; the client only ever receives the safe, generic message described above |
 
+Testing
 16 automated tests cover: validation and response-shape behavior (Task 8), plus — for Task 9 — request_id presence and consistency between the response header and body, INFO-level logging on success, ERROR-level logging on both failure paths (verified using monkeypatch combined with pytest's caplog fixture), and confirmation that non-prediction routes (e.g. /health) are logged too.
 
 ## System Architecture

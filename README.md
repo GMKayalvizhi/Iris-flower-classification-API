@@ -227,8 +227,8 @@ Log levels in use
 | `INFO` | Model load/shutdown, every request handled by the middleware (including validation rejections — the API correctly doing its job is not an error), successful predictions |
 | `WARNING` | Requests exceeding 200ms, flagged as slow without being treated as a failure |
 | `ERROR` | A `ValueError` or any other unexpected exception during prediction — the real error is logged here; the client only ever receives the safe, generic message described above |
-
 Testing
+
 16 automated tests cover: validation and response-shape behavior (Task 8), plus — for Task 9 — request_id presence and consistency between the response header and body, INFO-level logging on success, ERROR-level logging on both failure paths (verified using monkeypatch combined with pytest's caplog fixture), and confirmation that non-prediction routes (e.g. /health) are logged too.
 
 ## System Architecture

@@ -56,8 +56,11 @@ FastAPI application at startup — not reloaded per request.
 ### Endpoint
 
 ```text
-POST /api/v1/predict
+POST /predict
 ```
+
+> Versioned under `/api/v1/predict` is planned for a later task (API
+> versioning). The endpoint currently lives at `/predict`.
 
 ### Request
 
@@ -73,21 +76,27 @@ numeric, all expected within a sane biological range:
 }
 ```
 
+Requests containing any field not listed above (typos, extra metadata,
+etc.) are explicitly rejected with a `422`, rather than silently ignored.
+
 ### Successful Response
 
 For a valid request, the API returns the predicted species, the model's
-confidence in that prediction, the model version, a request ID for
-tracing, and how long the prediction took.
+confidence in that prediction, the model version, and a request ID for
+tracing.
 
 ```json
 {
-  "prediction": "Iris-setosa",
-  "confidence": 0.98,
+  "prediction": "setosa",
+  "confidence": 1.0,
   "model_version": "v1",
-  "request_id": "REQ-001",
-  "response_time_ms": 4.2
+  "request_id": "eae99247-902a-43ce-a21d-25585a902305"
 }
 ```
+
+> `response_time_ms` is planned for a later task (structured logging /
+> monitoring) and is not part of the response yet.
+
 ## Input Validation Strategy
 
 Input validation uses **feature-specific ranges** derived from the minimum and maximum values observed in the standard scikit-learn Iris dataset.
@@ -103,31 +112,41 @@ These constraints are stricter than generic bounds and
 prevent individual feature values from falling outside the range
 observed during model training.
 
-### Invalid Input — Not Just a 422, But *Why*
+### Invalid Input — What the Client Actually Sees
 
-A generic 422 tells the client something is wrong. It doesn't tell them
-*what*. This API returns a 422 that names the exact field, the problem,
-and what a valid value looks like, so the client can fix it without
-guessing.
+Invalid requests return FastAPI's standard `422 Unprocessable Entity`
+response. Each entry in `detail` names the exact field (`loc`), the
+problem (`msg`), the rule that was violated (`ctx`), and the value that
+was actually submitted (`input`) — so the client can fix the request
+without guessing.
 
-**Example — missing field:**
+**Example — value below the allowed minimum:**
 
 ```json
 {
-  "error": "validation_error",
-  "message": "One or more fields failed validation.",
-  "details": [
+  "detail": [
     {
-      "field": "petal_width",
-      "issue": "Field is required but was missing from the request.",
-      "expected": "A positive number, e.g. 0.2"
+      "type": "greater_than_equal",
+      "loc": ["body", "sepal_length"],
+      "msg": "Input should be greater than or equal to 4.3",
+      "input": 4.2,
+      "ctx": {"ge": 4.3}
     }
-  ],
-  "request_id": "REQ-002"
+  ]
 }
 ```
 
-**Example — out-of-range value:**
+If multiple fields fail validation in the same request, each one appears
+as its own entry in the `detail` array, so the client can fix everything
+in one pass instead of resubmitting repeatedly.
+
+The model never sees invalid input — Pydantic rejects it before it
+reaches the prediction step.
+
+## Planned Enhancement — Structured, Traceable Validation Errors
+
+The current 422 response uses FastAPI's default validation format shown
+above. A richer format is planned for a later task:
 
 ```json
 {
@@ -136,89 +155,101 @@ guessing.
   "details": [
     {
       "field": "sepal_length",
-      "issue": "Value -3.0 is outside the allowed range (0.1 to 10.0 cm).",
-      "expected": "A positive number between 0.1 and 10.0"
+      "issue": "Value 4.2 is below the allowed minimum of 4.3.",
+      "expected": "A number between 4.3 and 7.9"
     }
   ],
   "request_id": "REQ-002"
 }
 ```
 
-**Example — wrong type:**
+This is not yet implemented. Building it requires request-ID generation
+to happen before validation runs (e.g. via middleware), so that every
+request — successful, rejected by validation, or failed during
+prediction — carries the same trace ID from the moment it arrives. That
+piece of infrastructure is being built alongside structured logging
+(Task 9), rather than bolted on separately, since both depend on the
+same request-ID-first design.
 
-```json
-{
-  "error": "validation_error",
-  "message": "One or more fields failed validation.",
-  "details": [
-    {
-      "field": "petal_length",
-      "issue": "Value 'long' is not a valid number.",
-      "expected": "A numeric value, e.g. 1.4"
-    }
-  ],
-  "request_id": "REQ-002"
-}
-```
+## Error Handling Beyond Validation
 
-Every invalid request still gets a `request_id`, so even failed requests
-are traceable in the logs. Multiple invalid fields in one request appear
-together in the `details` array, rather than only reporting the first
-error found — the client can fix everything in one pass instead of
-resubmitting repeatedly.
+Pydantic validation covers bad *input*. It doesn't cover failures inside
+the prediction step itself — a corrupted model file, an unexpected array
+shape, or any other runtime failure. Two more layers handle those cases:
 
-The model never sees invalid input — Pydantic rejects it before it
-reaches the prediction step.
+- **`response_model=PredictionOutput`** — every successful response is
+  validated and filtered against a strict output schema
+  (`prediction`, `confidence`, `model_version`, `request_id`) before being
+  sent, so no unintended fields can leak into the response.
+- **A custom `ValueError` handler** — catches failures caused by the
+  *shape or value* of data reaching the model after validation already
+  passed (e.g. an internal array-shape bug), and returns a `400` with a
+  specific, still-safe message.
+- **A generic exception handler** — catches any other unanticipated
+  failure and returns a `500` with a fixed message (`"Prediction
+  failed"`). The real error is logged server-side only and never sent to
+  the client, since raw tracebacks can expose file paths and internal
+  implementation details.
+
+This project also explicitly rejects unexpected/misspelled fields in
+requests (`extra = "forbid"`) rather than silently ignoring them, so
+client-side typos surface immediately as a validation error instead of
+being dropped unnoticed.
+
+9 automated tests cover the full range of these behaviors, including the
+`500` and `400` failure paths — which are deliberately triggered in tests
+via `monkeypatch`, since they can't be reproduced with real, valid input.
 
 ## System Architecture
 
 ```text
 Client
    |
-   | POST /api/v1/predict
+   | POST /predict
    v
 FastAPI (app/main.py)
    |
    v
 Pydantic Validation (app/models/schemas.py)
    |
-   |---- Invalid Input ----> 422 + field-level reason + request_id
+   |---- Invalid Input ----> 422 (field-level detail)
    |
    v
 Random Forest Model (loaded once at startup)
    |
-   v
-Prediction + Confidence
+   |---- Inference failure ----> 400 (ValueError) or 500 (other)
    |
    v
-Structured Logging
+Prediction + Confidence (validated against PredictionOutput)
    |
    v
-JSON Response (prediction, confidence, request_id, response_time_ms)
+JSON Response (prediction, confidence, model_version, request_id)
 ```
 
-Separately, `/metrics` is scraped on a schedule by Prometheus to build a
-live health picture — it has no involvement in the prediction path above.
+Structured logging, request-ID middleware, and `/metrics` for Prometheus
+are planned for later tasks.
 
 ## Request Flow (In Plain Words)
 
-1. **Client sends a request** — a POST with the four flower measurements,
-   sent via curl during development.
+1. **Client sends a request** — a POST with the four flower measurements.
 2. **Pydantic checks it first** — before any model code runs, it verifies
-   all four fields are present, are numbers, and fall within a sane range.
+   all four fields are present, are numbers, fall within a sane range,
+   and that no unexpected fields were included.
 3. **Bad input stops here, with a reason** — if validation fails, the
    client gets a 422 naming the exact field and issue. The model is never
    called. Nothing crashes.
 4. **Good input reaches the model** — the model was already loaded into
    memory once at server startup, so it just runs `.predict()` and
    `.predict_proba()` on the validated input.
-5. **The request gets logged** — the input, the prediction, the model
-   version, and the request ID are all written to a structured log entry,
-   whether the request succeeded or failed validation.
-6. **The response goes back** — a JSON object with the prediction,
-   confidence, request ID, and response time is returned to the client.
-7. **Prometheus watches in the background** — it scrapes `/metrics` on a
-   schedule to track request volume and latency over time.
+5. **Inference failures are caught, not leaked** — a `ValueError` (e.g. a
+   shape mismatch) returns a `400` with a specific safe message; any other
+   unexpected failure returns a `500` with a generic safe message. Raw
+   tracebacks never reach the client.
+6. **The response is validated on the way out** — the `response_model`
+   guarantees only the intended fields (`prediction`, `confidence`,
+   `model_version`, `request_id`) are ever returned.
+7. **The response goes back** — a JSON object with the prediction,
+   confidence, model version, and request ID is returned to the client.
 
 ## Technology Stack
 
@@ -260,15 +291,16 @@ once and forgotten.
 - [x] FastAPI application
 - [x] Model loading
 - [x] Prediction endpoint
-- [x] Pydantic validation (with field-level error messages)
-- [ ] Error handling
+- [x] Pydantic validation (with feature-specific bounds, extra fields forbidden)
+- [x] Error handling & response models (`response_model`, `ValueError` → 400, generic → 500)
 - [ ] Structured logging
+- [ ] Request-ID middleware + structured validation errors (planned, see above)
 
 ### Phase 3 — API Features
 - [ ] API versioning
 - [ ] Additional endpoints
 - [ ] Configuration management
-- [ ] Automated testing
+- [ ] Automated testing (beyond current pytest suite)
 
 ### Phase 4 — Production Readiness
 - [ ] Docker
@@ -310,7 +342,7 @@ The final project will provide:
 The goal of this project is to demonstrate how a machine learning model
 can be transformed from a simple training environment into a validated,
 tested, versioned, containerized, monitored, and deployable production
-API — one that fails *helpfully*, not just safely.
+API — one that fails helpfully, not just safely.
 
-The emphasis of the project is on **ML model deployment and software
-engineering practices**, rather than model complexity.
+The emphasis of the project is on ML model deployment and software
+engineering practices, rather than model complexity.

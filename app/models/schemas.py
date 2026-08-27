@@ -25,7 +25,8 @@ class IrisInput(BaseModel):
     )
 
     model_config = {
-    "json_schema_extra": {
+     "extra": "forbid",   
+     "json_schema_extra": {
         "example": {
             "sepal_length": 5.1,
             "sepal_width": 3.5,
@@ -34,3 +35,29 @@ class IrisInput(BaseModel):
         }
     }
 }
+
+class PredictionOutput(BaseModel):
+    """
+    Response schema for a successful Iris species prediction.
+
+    Defines the exact shape every /predict response must match. FastAPI
+    uses this to validate and filter outgoing data — any extra fields
+    your code accidentally returns get stripped before the client sees them.
+    """
+
+    prediction: str = Field(..., description="Predicted Iris species name")
+    confidence: float = Field(..., description="Model's confidence in the prediction (0–1)")
+    model_version: str = Field(..., description="Version identifier of the model that served this prediction")
+    request_id: str = Field(..., description="Unique identifier for this request (placeholder until Task 9)")
+
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "prediction": "setosa",
+                "confidence": 0.97,
+                "model_version": "v1",
+                "request_id": "not-yet-implemented",
+            }
+        }
+    }    

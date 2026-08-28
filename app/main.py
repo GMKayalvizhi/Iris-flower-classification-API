@@ -16,11 +16,11 @@ ml_models = {}
 async def lifespan(app: FastAPI):
     # Startup: runs once when the app boots
     ml_models["iris_classifier"] = joblib.load("ml/saved_model/model.joblib")
-    logger.info("✅ Model loaded successfully at startup")
+    logger.info("Model loaded successfully at startup")
     yield
     # Shutdown: runs once when the app stops (cleanup if needed)
     ml_models.clear()
-    logger.info("🛑 Model cleared on shutdown")
+    logger.info("Model cleared on shutdown")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -107,7 +107,8 @@ def predict(input_data: IrisInput, request: Request):
         raise e
     except Exception as e:
         logger.error(f"request_id={request_id} Unexpected error: {e}")
-        raise HTTPException(status_code=500, detail="Prediction failed")
+        raise HTTPException(status_code=500, 
+                            detail={"message": "Prediction failed", "request_id": request_id})
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
@@ -115,5 +116,5 @@ async def value_error_handler(request: Request, exc: ValueError):
     logger.error(f"request_id={request_id} ValueError during request: {exc}")
     return JSONResponse(
         status_code=400,
-        content={"detail": "Invalid input shape or value for prediction"},
+        content={"detail": "Invalid input shape or value for prediction", "request_id": request_id,},
     )

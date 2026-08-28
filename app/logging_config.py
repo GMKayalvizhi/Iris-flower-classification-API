@@ -20,7 +20,7 @@ def setup_logging():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # Console handler — prints to your terminal, same as print() did
+    # Console handler — prints to your terminal
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)

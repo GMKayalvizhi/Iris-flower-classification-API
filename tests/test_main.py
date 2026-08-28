@@ -89,7 +89,9 @@ def test_internal_failure_returns_500_with_safe_message(client, monkeypatch):
 
     response = client.post("/predict", json=VALID_INPUT)
     assert response.status_code == 500
-    assert response.json() == {"detail": "Prediction failed"}
+    body = response.json()
+    assert body["detail"]["message"] == "Prediction failed"
+    assert "request_id" in body["detail"]
 
 
 def test_value_error_returns_400_with_safe_message(client, monkeypatch):
@@ -102,7 +104,9 @@ def test_value_error_returns_400_with_safe_message(client, monkeypatch):
 
     response = client.post("/predict", json=VALID_INPUT)
     assert response.status_code == 400
-    assert response.json() == {"detail": "Invalid input shape or value for prediction"}
+    body = response.json()
+    assert body["detail"] == "Invalid input shape or value for prediction"
+    assert "request_id" in body
 
 
 # ---------- Task 9: logging & request ID tests ----------

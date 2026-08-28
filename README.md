@@ -36,7 +36,8 @@ Run the test suite with:
 ```bash
 pytest -v
 ```
-##API Contract
+## API Contract
+
 POST /predict
 
 Versioned as /api/v1/predict is planned for a later task. The endpoint currently lives at /predict.
@@ -89,7 +90,8 @@ GET /health
 
 Returns {"status": "ok", "model_loaded": true} (or "degraded" / false if the model failed to load).
 
-##Engineering Notes
+## Engineering Notes
+
 Validation: feature-specific ge/le bounds (not generic ranges), derived from the actual dataset — rejects values outside what the model was trained on, before they ever reach it.
 Response shape: response_model=PredictionOutput filters every response through a strict schema, so no unintended fields can leak out.
 Error handling: ValueError (bad data shape reaching the model) and everything else are handled separately — 400 vs 500 — but the client only ever sees a safe, generic message either way. The real error is logged server-side only.

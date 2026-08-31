@@ -36,48 +36,40 @@ Run the test suite with:
 ```bash
 pytest -v
 ```
-
 ## API Contract
 
-### `POST /predict`
+POST /predict
 
-> Versioned as `/api/v1/predict` is planned for a later task. The
-> endpoint currently lives at `/predict`.
+Versioned as /api/v1/predict is planned for a later task. The endpoint currently lives at /predict.
 
-**Request** — all four fields required, numeric, within the dataset's
-observed range. Unexpected fields are rejected, not ignored.
+Request — all four fields required, numeric, within the dataset's observed range. Unexpected fields are rejected, not ignored.
 
-```json
+json
 {
   "sepal_length": 5.1,
   "sepal_width": 3.5,
   "petal_length": 1.4,
   "petal_width": 0.2
 }
-```
+Feature	Min	Max
+sepal_length	4.3	7.9
+sepal_width	2.0	4.4
+petal_length	1.0	6.9
+petal_width	0.1	2.5
 
-| Feature | Min | Max |
-|---|---|---|
-| sepal_length | 4.3 | 7.9 |
-| sepal_width | 2.0 | 4.4 |
-| petal_length | 1.0 | 6.9 |
-| petal_width | 0.1 | 2.5 |
+Successful response (200):
 
-**Successful response (200):**
-
-```json
+json
 {
   "prediction": "setosa",
   "confidence": 1.0,
   "model_version": "v1",
   "request_id": "eae99247-902a-43ce-a21d-25585a902305"
 }
-```
 
-**Validation error (422)** — Pydantic's default format, naming the exact
-field, rule, and value submitted:
+Validation error (422) — Pydantic's default format, naming the exact field, rule, and value submitted:
 
-```json
+json
 {
   "detail": [
     {
@@ -89,110 +81,22 @@ field, rule, and value submitted:
     }
   ]
 }
-```
 
-**Inference error (400 / 500)** — a `ValueError` (bad shape/value reaching
-the model) returns `400`; any other unexpected failure returns `500`.
-Both include `request_id` so a failure can be traced in the server logs;
-neither ever exposes internal details like file paths or stack traces.
+Inference error (400 / 500) — a ValueError (bad shape/value reaching the model) returns 400; any other unexpected failure returns 500. Both include request_id so a failure can be traced in the server logs; neither ever exposes internal details like file paths or stack traces.
 
-```json
+json
 {"detail": "Prediction failed", "request_id": "fc3b0224-..."}
-```
+GET /health
 
-This is not yet implemented. Building it requires request-ID generation
-to happen before validation runs (e.g. via middleware), so that every
-request — successful, rejected by validation, or failed during
-prediction — carries the same trace ID from the moment it arrives. That
-piece of infrastructure is being built alongside structured logging
-(Task 9), rather than bolted on separately, since both depend on the
-same request-ID-first design.
+Returns {"status": "ok", "model_loaded": true} (or "degraded" / false if the model failed to load).
 
-## Error Handling Beyond Validation
+## Engineering Notes
 
-Pydantic validation covers bad *input*. It doesn't cover failures inside
-the prediction step itself — a corrupted model file, an unexpected array
-shape, or any other runtime failure. Two more layers handle those cases:
-
-- **`response_model=PredictionOutput`** — every successful response is
-  validated and filtered against a strict output schema
-  (`prediction`, `confidence`, `model_version`, `request_id`) before being
-  sent, so no unintended fields can leak into the response.
-- **A custom `ValueError` handler** — catches failures caused by the
-  *shape or value* of data reaching the model after validation already
-  passed (e.g. an internal array-shape bug), and returns a `400` with a
-  specific, still-safe message.
-- **A generic exception handler** — catches any other unanticipated
-  failure and returns a `500` with a fixed message (`"Prediction
-  failed"`). The real error is logged server-side only and never sent to
-  the client, since raw tracebacks can expose file paths and internal
-  implementation details.
-
-This project also explicitly rejects unexpected/misspelled fields in
-requests (`extra = "forbid"`) rather than silently ignoring them, so
-client-side typos surface immediately as a validation error instead of
-being dropped unnoticed.
-
-9 automated tests cover the full range of these behaviors, including the
-`500` and `400` failure paths — which are deliberately triggered in tests
-via `monkeypatch`, since they can't be reproduced with real, valid input.
-
-Structured Logging & Request Tracing
-
-Every request — successful, rejected by validation, or failed during prediction — is logged with consistent, parseable structure, to both the console and a persistent log file. print() is not used anywhere in the application; all output goes through a configured logger.
-
-Setup
-A dedicated app/logging_config.py configures a named logger (iris_api) with two handlers:
-Console handler — mirrors log output to the terminal
-RotatingFileHandler — writes to logs/app.log, capped at ~1MB per file with the last 3 files kept, so logs persist across restarts without growing unbounded
-Every log line follows the same format: timestamp, level, logger name, message — e.g. 2026-08-27 15:50:30 | INFO | iris_api | request_id=... method=POST path=/predict status=200 duration_ms=18.68
-Request tracing
-
-An @app.middleware("http") function wraps every incoming request:
-
-Generates a unique request_id (uuid4()) and attaches it to request.state, making it available inside route functions
-Times the full request (start to finish)
-Logs method, path, response status, and duration for every request, regardless of which route was hit or whether it succeeded
-Attaches the same ID to the response as an X-Request-ID header
-
-Inside /predict, the same request_id is read back from request.state and included in both the log line and the response body — so one ID connects the middleware's traffic-level log, the route's business-outcome log, the JSON response, and the response header for a single request.
-
-Log levels in use
-| Level | Used for |
-|---|---|
-| `DEBUG` | The raw feature array passed to the model, logged before inference. Intentionally filtered out under the current `INFO`-level logger configuration; exists for local troubleshooting and becomes visible by lowering the logger's configured level, with no code change required. |
-| `INFO` | Model load/shutdown, every request handled by the middleware (including validation rejections — the API correctly doing its job is not an error), successful predictions |
-| `WARNING` | Requests exceeding 200ms, flagged as slow without being treated as a failure |
-| `ERROR` | A `ValueError` or any other unexpected exception during prediction — the real error is logged here; the client only ever receives the safe, generic message described above |
-
-## System Architecture
-
-```text
-Client
-   |
-   | POST /predict
-   v
-FastAPI (app/main.py)
-   |
-   v
-Pydantic Validation (app/models/schemas.py)
-   |
-   |---- Invalid Input ----> 422 (field-level detail)
-   |
-   v
-Random Forest Model (loaded once at startup)
-   |
-   |---- Inference failure ----> 400 (ValueError) or 500 (other)
-   |
-   v
-Prediction + Confidence (validated against PredictionOutput)
-   |
-   v
-JSON Response (prediction, confidence, model_version, request_id)
-```
-
-Structured logging, request-ID middleware, and `/metrics` for Prometheus
-are planned for later tasks.
+Validation: feature-specific ge/le bounds (not generic ranges), derived from the actual dataset — rejects values outside what the model was trained on, before they ever reach it.
+Response shape: response_model=PredictionOutput filters every response through a strict schema, so no unintended fields can leak out.
+Error handling: ValueError (bad data shape reaching the model) and everything else are handled separately — 400 vs 500 — but the client only ever sees a safe, generic message either way. The real error is logged server-side only.
+Logging & tracing: every request gets a request_id (via middleware), logged to console and a rotating file (logs/app.log, ~1MB cap, 3 backups) alongside method, path, status, and duration. The same ID appears in the log, the response body, and an X-Request-ID header, so one request can be traced end to end. Log levels: DEBUG (raw features, off by default), INFO (requests, successes), WARNING (requests over 200ms), ERROR (real failures).
+Testing: 16 pytest cases covering validation, response shape, both error paths, and logging behavior (via monkeypatch + caplog).
 
 ## Request Flow (In Plain Words)
 

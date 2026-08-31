@@ -2,8 +2,8 @@
 
 A REST API that predicts Iris flower species from sepal/petal measurements,
 built to demonstrate production API engineering — validation, error
-handling, structured logging, and (in later phases) containerization and
-monitoring — rather than model complexity.
+handling, structured logging, versioning, and (in later phases)
+containerization and monitoring — rather than model complexity.
 
 * **Model:** Random Forest Classifier (scikit-learn), trained on the
   standard Iris dataset (Setosa / Versicolor / Virginica)
@@ -29,7 +29,7 @@ uvicorn app.main:app --reload
 ```
 
 Then open **http://127.0.0.1:8000/docs** for interactive API docs, or
-**http://127.0.0.1:8000/health** to check the service status.
+**http://127.0.0.1:8000/api/v1/health** to check the service status.
 
 Run the test suite with:
 
@@ -38,38 +38,46 @@ pytest -v
 ```
 ## API Contract
 
-POST /predict
+### `POST /api/v1/predict`
 
-Versioned as /api/v1/predict is planned for a later task. The endpoint currently lives at /predict.
+All API routes are namespaced under `/api/v1/...` via a FastAPI `APIRouter`,
+so the contract below can evolve behind a new `/api/v2/...` prefix later
+without breaking existing clients.
 
-Request — all four fields required, numeric, within the dataset's observed range. Unexpected fields are rejected, not ignored.
+**Request** — all four fields required, numeric, within the dataset's
+observed range. Unexpected fields are rejected, not ignored.
 
-json
+```json
 {
   "sepal_length": 5.1,
   "sepal_width": 3.5,
   "petal_length": 1.4,
   "petal_width": 0.2
 }
-Feature	Min	Max
-sepal_length	4.3	7.9
-sepal_width	2.0	4.4
-petal_length	1.0	6.9
-petal_width	0.1	2.5
+```
 
-Successful response (200):
+| Feature       | Min | Max |
+| ------------- | --- | --- |
+| sepal_length  | 4.3 | 7.9 |
+| sepal_width   | 2.0 | 4.4 |
+| petal_length  | 1.0 | 6.9 |
+| petal_width   | 0.1 | 2.5 |
 
-json
+**Successful response (200):**
+
+```json
 {
   "prediction": "setosa",
   "confidence": 1.0,
   "model_version": "v1",
   "request_id": "eae99247-902a-43ce-a21d-25585a902305"
 }
+```
 
-Validation error (422) — Pydantic's default format, naming the exact field, rule, and value submitted:
+**Validation error (422)** — Pydantic's default format, naming the exact
+field, rule, and value submitted:
 
-json
+```json
 {
   "detail": [
     {
@@ -81,14 +89,21 @@ json
     }
   ]
 }
+```
 
-Inference error (400 / 500) — a ValueError (bad shape/value reaching the model) returns 400; any other unexpected failure returns 500. Both include request_id so a failure can be traced in the server logs; neither ever exposes internal details like file paths or stack traces.
+**Inference error (400 / 500)** — a `ValueError` (bad shape/value reaching
+the model) returns 400; any other unexpected failure returns 500. Both
+include `request_id` so a failure can be traced in the server logs;
+neither ever exposes internal details like file paths or stack traces.
 
-json
+```json
 {"detail": "Prediction failed", "request_id": "fc3b0224-..."}
-GET /health
+```
 
-Returns {"status": "ok", "model_loaded": true} (or "degraded" / false if the model failed to load).
+### `GET /api/v1/health`
+
+Returns `{"status": "ok", "model_loaded": true}` (or `"degraded"` /
+`false` if the model failed to load).
 
 ## Engineering Notes
 
@@ -96,6 +111,7 @@ Validation: feature-specific ge/le bounds (not generic ranges), derived from the
 Response shape: response_model=PredictionOutput filters every response through a strict schema, so no unintended fields can leak out.
 Error handling: ValueError (bad data shape reaching the model) and everything else are handled separately — 400 vs 500 — but the client only ever sees a safe, generic message either way. The real error is logged server-side only.
 Logging & tracing: every request gets a request_id (via middleware), logged to console and a rotating file (logs/app.log, ~1MB cap, 3 backups) alongside method, path, status, and duration. The same ID appears in the log, the response body, and an X-Request-ID header, so one request can be traced end to end. Log levels: DEBUG (raw features, off by default), INFO (requests, successes), WARNING (requests over 200ms), ERROR (real failures).
+API versioning: routes are defined on an APIRouter(prefix="/api/v1") in app/routers/v1.py, not directly on the app instance, and mounted via app.include_router(...) in app/main.py. Shared state (the loaded model) lives in its own module, app/state.py, so route modules and the app entrypoint can both read it without a circular import. Infrastructure that applies to every version — middleware, exception handlers, model loading — stays in app/main.py; only version-specific route logic and schemas live under app/routers/.
 Testing: 16 pytest cases covering validation, response shape, both error paths, and logging behavior (via monkeypatch + caplog).
 
 ## Request Flow (In Plain Words)
@@ -137,12 +153,12 @@ Testing: 16 pytest cases covering validation, response shape, both error paths, 
 
 ## Planned API Endpoints
 
-| Method | Endpoint          | Purpose                     |
-| ------ | ----------------- | ---------------------------- |
-| POST   | `/api/v1/predict` | Predict Iris flower species |
-| GET    | `/health`         | Check API health            |
-| GET    | `/model-info`     | Get model information       |
-| GET    | `/metrics`        | Provide application metrics |
+| Method | Endpoint            | Purpose                      |
+| ------ | ------------------- | ----------------------------- |
+| POST   | `/api/v1/predict`   | Predict Iris flower species  |
+| GET    | `/api/v1/health`    | Check API health             |
+| GET    | `/model-info`       | Get model information        |
+| GET    | `/metrics`          | Provide application metrics  |
 
 
 ## Project Roadmap
@@ -158,7 +174,7 @@ Testing: 16 pytest cases covering validation, response shape, both error paths, 
 - [x] Request-ID middleware (traced across logs, response body, response header)
 
 ### Phase 3 — API Features
-- [ ] API versioning
+- [x] API versioning (`/api/v1` via `APIRouter`, `app/routers/` structure)
 - [ ] Additional endpoints (`/model-info`, `/metrics`)
 - [ ] Configuration management
 - [ ] Automated testing (beyond current pytest suite)

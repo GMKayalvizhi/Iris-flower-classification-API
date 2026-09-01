@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.config import settings
 
 
 @pytest.fixture
@@ -345,6 +346,58 @@ def test_model_info_logs_at_info_level(client, caplog):
  
     assert response.status_code == 200
     assert any("model-info requested" in record.message for record in caplog.records)
+
+    # ---------- Task 12: configuration management tests ----------
+ 
+def test_settings_has_expected_fields():
+    # A basic sanity check that Settings loaded and every field has a
+    # usable value -- catches a broken/empty .env before it causes
+    # confusing failures elsewhere.
+    assert settings.MODEL_PATH
+    assert settings.MODEL_INFO_PATH
+    assert settings.LOG_LEVEL
+    assert isinstance(settings.MAX_BATCH_SIZE, int)
+    assert settings.MAX_BATCH_SIZE > 0
+    assert settings.API_TITLE
+ 
+ 
+def test_api_title_from_settings_appears_in_root_response(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert settings.API_TITLE in response.json()["message"]
+ 
+ 
+def test_max_batch_size_is_enforced_from_current_settings(client):
+    # Confirms the CURRENTLY configured limit is respected, using
+    # whatever settings.MAX_BATCH_SIZE actually is right now -- this
+    # test stays correct even if someone changes the .env default,
+    # unlike a test that hardcodes "100".
+    at_limit = {"inputs": [VALID_INPUT] * settings.MAX_BATCH_SIZE}
+    response = client.post("/api/v1/predict-batch", json=at_limit)
+    assert response.status_code == 200
+ 
+    over_limit = {"inputs": [VALID_INPUT] * (settings.MAX_BATCH_SIZE + 1)}
+    response = client.post("/api/v1/predict-batch", json=over_limit)
+    assert response.status_code == 422
+ 
+ 
+def test_max_batch_size_is_dynamically_configurable(client, monkeypatch):
+    # This is the real proof that the batch limit is config-driven and
+    # not a hardcoded number: change settings.MAX_BATCH_SIZE at test
+    # time (no server restart, no .env edit) and confirm the API's
+    # behavior changes immediately. This only works because
+    # PredictionBatchInput checks settings.MAX_BATCH_SIZE inside a
+    # field_validator (evaluated per-request) rather than a static
+    # Field(max_length=...) (evaluated once, at import time).
+    monkeypatch.setattr(settings, "MAX_BATCH_SIZE", 3)
+ 
+    within_new_limit = {"inputs": [VALID_INPUT, VALID_INPUT, VALID_INPUT]}
+    response = client.post("/api/v1/predict-batch", json=within_new_limit)
+    assert response.status_code == 200
+ 
+    over_new_limit = {"inputs": [VALID_INPUT] * 4}
+    response = client.post("/api/v1/predict-batch", json=over_new_limit)
+    assert response.status_code == 422
  
 
 

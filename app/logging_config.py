@@ -3,12 +3,21 @@ import sys
 from logging.handlers import RotatingFileHandler
 import os
 
+from app.config import settings
+
 # Make sure the logs folder exists before we try to write to it
 os.makedirs("logs", exist_ok=True)
 
 def setup_logging():
     logger = logging.getLogger("iris_api")
-    logger.setLevel(logging.INFO)
+
+    # Task 12: log level now comes from settings.LOG_LEVEL (env var
+    # LOG_LEVEL, e.g. "DEBUG", "INFO", "WARNING") instead of a hardcoded
+    # logging.INFO. getattr with a fallback means an invalid/misspelled
+    # value in .env degrades to INFO rather than crashing the app at
+    # startup -- a bad log level shouldn't take the whole service down.
+    log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    logger.setLevel(log_level)
 
     # Avoid adding duplicate handlers if this gets called more than once
     # (e.g. during --reload restarts)

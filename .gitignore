@@ -13,7 +13,6 @@ __pycache__/
 
 # Environment variables / secrets
 .env
-.env.local
 
 # ML model artifacts (large binaries - decide per-project if you want these tracked)
 # Uncomment if you don't want to commit trained models to git:

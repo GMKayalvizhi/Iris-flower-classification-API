@@ -1,6 +1,8 @@
 from typing import List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.config import settings
 
 
 class IrisInput(BaseModel):
@@ -68,22 +70,39 @@ class PredictionOutput(BaseModel):
 class PredictionBatchInput(BaseModel):
     """
     Input schema for batch Iris species prediction.
-
+ 
     Wraps a list of IrisInput rather than accepting a bare JSON array at
     the top level -- a named field (`inputs`) leaves room to add
     batch-level options later (e.g. a flag to skip validation on
     individual rows) without breaking the request shape, the same reason
-    the response is wrapped too. Bounded to 1-100 items: an empty batch
-    is a client mistake worth rejecting explicitly (422) rather than
-    silently returning an empty response, and an upper bound keeps one
-    request from becoming an accidental load test.
+    the response is wrapped too.
+ 
+    Task 12 design note: the upper bound is intentionally NOT
+    Field(max_length=settings.MAX_BATCH_SIZE). A Field constraint like
+    that is evaluated once, when this class is first defined at import
+    time -- the number gets baked in permanently, and changing
+    settings.MAX_BATCH_SIZE afterward (e.g. via monkeypatch in a test,
+    or in principle at runtime) would have no effect. Using a
+    field_validator instead re-reads settings.MAX_BATCH_SIZE on every
+    single request, so the limit is genuinely live-configurable and
+    testable without restarting the app.
     """
-
+ 
     inputs: List[IrisInput] = Field(
-        ..., min_length=1, max_length=100,
-        description="1 to 100 Iris measurements to predict in a single call"
+        ..., min_length=1,
+        description="A batch of Iris measurements to predict in a single call (see MAX_BATCH_SIZE)"
     )
-
+ 
+    @field_validator("inputs")
+    @classmethod
+    def enforce_max_batch_size(cls, inputs: List[IrisInput]) -> List[IrisInput]:
+        if len(inputs) > settings.MAX_BATCH_SIZE:
+            raise ValueError(
+                f"Batch size {len(inputs)} exceeds the maximum allowed "
+                f"({settings.MAX_BATCH_SIZE})"
+            )
+        return inputs
+ 
     model_config = {
         "json_schema_extra": {
             "example": {

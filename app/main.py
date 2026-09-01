@@ -6,35 +6,29 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import joblib
 
+from app.config import settings
 from app.logging_config import logger
 from app.state import ml_models
 from app.routers.v1 import router as v1_router
-
-MODEL_PATH = "ml/saved_model/model.joblib"
-MODEL_INFO_PATH = "ml/saved_model/model_info.json"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: runs once when the app boots
-    ml_models["iris_classifier"] = joblib.load(MODEL_PATH)
+    ml_models["iris_classifier"] = joblib.load(settings.MODEL_PATH)
     logger.info("Model loaded successfully at startup")
-
-    # Task 11: load model metadata once here too, not per-request in the
-    # /model-info route. Same reasoning as the model itself -- a disk
-    # read on every request would be wasted work for data that never
-    # changes between requests.
-    with open(MODEL_INFO_PATH) as f:
+ 
+    with open(settings.MODEL_INFO_PATH) as f:
         ml_models["model_info"] = json.load(f)
     logger.info("Model info loaded successfully at startup")
-
+ 
     yield
     # Shutdown: runs once when the app stops (cleanup if needed)
     ml_models.clear()
     logger.info("Model cleared on shutdown")
-
-
-app = FastAPI(lifespan=lifespan)
+ 
+ 
+app = FastAPI(title=settings.API_TITLE, lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -62,7 +56,7 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/")
 def root():
-    return {"message": "Iris Classification API is running"}
+    return {"message": f"{settings.API_TITLE} is running"}
 
 
 @app.exception_handler(ValueError)

@@ -1,118 +1,94 @@
-# Iris Flower Classification API
+## Iris Flower Classification API
 
-A REST API that predicts Iris flower species from sepal/petal measurements,
-built to demonstrate production API engineering — validation, error
-handling, structured logging, versioning, and (in later phases)
-containerization and monitoring — rather than model complexity.
+A REST API that predicts Iris flower species from sepal/petal measurements, built to demonstrate production API engineering — validation, error handling, structured logging, versioning, and configuration management — rather than model complexity.
 
-* **Model:** Random Forest Classifier (scikit-learn), trained on the
-  standard Iris dataset (Setosa / Versicolor / Virginica)
-* **Stack:** FastAPI, Pydantic, Uvicorn, joblib, pytest
-
-## Getting Started
-
-```bash
-# 1. Clone the repo
+Model: Random Forest Classifier (scikit-learn) — Setosa / Versicolor / Virginica
+Stack: FastAPI, Pydantic, pydantic-settings, Uvicorn, joblib, pytest
+Getting Started
+bash
 git clone https://github.com/GMKayalvizhi/Iris-flower-classification-API.git
 cd Iris-flower-classification-API
 
-# 2. Create and activate a virtual environment
 python -m venv venv
 venv\Scripts\activate        # Windows
 # source venv/bin/activate   # macOS/Linux
 
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run the API
+copy .env.example .env       # Windows
+# cp .env.example .env       # macOS/Linux
+
 uvicorn app.main:app --reload
-```
 
-Then open **http://127.0.0.1:8000/docs** for interactive API docs, or
-**http://127.0.0.1:8000/api/v1/health** to check the service status.
+Open http://127.0.0.1:8000/docs for interactive API docs. Run tests with pytest -v.
 
-Run the test suite with:
-
-```bash
-pytest -v
-```
 ## API Contract
 
-### `POST /api/v1/predict`
+All routes are namespaced under /api/v1/..., so the contract can evolve behind a future /api/v2/... without breaking existing clients.
 
-All API routes are namespaced under `/api/v1/...` via a FastAPI `APIRouter`,
-so the contract below can evolve behind a new `/api/v2/...` prefix later
-without breaking existing clients.
+## POST /api/v1/predict
+json
+// Request
+{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}
+Feature	Min	Max
+sepal_length	4.3	7.9
+sepal_width	2.0	4.4
+petal_length	1.0	6.9
+petal_width	0.1	2.5
+json
+// 200 response
+{"prediction": "setosa", "confidence": 1.0, "model_version": "1.0.0", "request_id": "eae99247-..."}
+422 — Pydantic validation error, naming the exact field/rule/value.
+400 / 500 — a ValueError (bad shape reaching the model) returns 400; anything else returns 500. Both include request_id; neither exposes internals.
 
-**Request** — all four fields required, numeric, within the dataset's
-observed range. Unexpected fields are rejected, not ignored.
+## POST /api/v1/predict-batch
 
-```json
+Accepts 1–MAX_BATCH_SIZE inputs (default 100). Runs inference once on the whole batch (vectorized), never in a per-row loop.
+
+json
+// Request
+{"inputs": [{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}]}
+
+// 200 response
 {
-  "sepal_length": 5.1,
-  "sepal_width": 3.5,
-  "petal_length": 1.4,
-  "petal_width": 0.2
+  "predictions": [{"prediction": "setosa", "confidence": 1.0, "model_version": "1.0.0"}],
+  "count": 1,
+  "request_id": "a8a8cff5-..."
 }
-```
 
-| Feature       | Min | Max |
-| ------------- | --- | --- |
-| sepal_length  | 4.3 | 7.9 |
-| sepal_width   | 2.0 | 4.4 |
-| petal_length  | 1.0 | 6.9 |
-| petal_width   | 0.1 | 2.5 |
+One request_id for the whole batch, not per item — every item came from the same request. Exceeding the batch limit or sending an empty list returns 422.
 
-**Successful response (200):**
+## GET /api/v1/model-info
 
-```json
-{
-  "prediction": "setosa",
-  "confidence": 1.0,
-  "model_version": "v1",
-  "request_id": "eae99247-902a-43ce-a21d-25585a902305"
-}
-```
+Returns metadata from ml/saved_model/model_info.json (written by the training script — never hardcoded): model_type, model_version, trained_on, feature_names, target_names, n_estimators, test_accuracy.
 
-**Validation error (422)** — Pydantic's default format, naming the exact
-field, rule, and value submitted:
+## GET /api/v1/health
 
-```json
-{
-  "detail": [
-    {
-      "type": "greater_than_equal",
-      "loc": ["body", "sepal_length"],
-      "msg": "Input should be greater than or equal to 4.3",
-      "input": 4.2,
-      "ctx": {"ge": 4.3}
-    }
-  ]
-}
-```
+Returns {"status": "ok", "model_loaded": true} (or "degraded" / false).
 
-**Inference error (400 / 500)** — a `ValueError` (bad shape/value reaching
-the model) returns 400; any other unexpected failure returns 500. Both
-include `request_id` so a failure can be traced in the server logs;
-neither ever exposes internal details like file paths or stack traces.
+## Configuration
 
-```json
-{"detail": "Prediction failed", "request_id": "fc3b0224-..."}
-```
+Twelve-factor style: environment-specific values live in .env (git-ignored), not in code. .env.example is committed and documents what's expected. Every setting has a working default, so the app runs even with no .env present.
 
-### `GET /api/v1/health`
-
-Returns `{"status": "ok", "model_loaded": true}` (or `"degraded"` /
-`false` if the model failed to load).
+| Variable	      | Default	                         | Purpose                            |
+| --------------- | -------------------------------- | ---------------------------------- |
+| MODEL_PATH	    | ml/saved_model/model.joblib	     | Trained model file                 |
+| MODEL_INFO_PATH	| ml/saved_model/model_info.json	 | Model metadata file                |
+| LOG_LEVEL	      | INFO	                           | Minimum log level                  |
+| MAX_BATCH_SIZE	| 100	                             | Max items per /predict-batch call  |
+| API_TITLE	      | Iris Flower Classification API	 | Shown in /docs and /               |
 
 ## Engineering Notes
 
-Validation: feature-specific ge/le bounds (not generic ranges), derived from the actual dataset — rejects values outside what the model was trained on, before they ever reach it.
-Response shape: response_model=PredictionOutput filters every response through a strict schema, so no unintended fields can leak out.
-Error handling: ValueError (bad data shape reaching the model) and everything else are handled separately — 400 vs 500 — but the client only ever sees a safe, generic message either way. The real error is logged server-side only.
-Logging & tracing: every request gets a request_id (via middleware), logged to console and a rotating file (logs/app.log, ~1MB cap, 3 backups) alongside method, path, status, and duration. The same ID appears in the log, the response body, and an X-Request-ID header, so one request can be traced end to end. Log levels: DEBUG (raw features, off by default), INFO (requests, successes), WARNING (requests over 200ms), ERROR (real failures).
-API versioning: routes are defined on an APIRouter(prefix="/api/v1") in app/routers/v1.py, not directly on the app instance, and mounted via app.include_router(...) in app/main.py. Shared state (the loaded model) lives in its own module, app/state.py, so route modules and the app entrypoint can both read it without a circular import. Infrastructure that applies to every version — middleware, exception handlers, model loading — stays in app/main.py; only version-specific route logic and schemas live under app/routers/.
-Testing: 16 pytest cases covering validation, response shape, both error paths, and logging behavior (via monkeypatch + caplog).
+Validation — feature-specific ge/le bounds derived from the dataset, plus extra="forbid", reject bad input before it reaches the model.
+Response shape — every endpoint has a strict response_model, so no unintended fields leak out.
+Error handling — ValueError → 400, anything else → 500, consistently across /predict, /predict-batch, /model-info. Client sees a safe generic message; the real error is logged server-side only.
+Tracing — one request_id per request, generated once in middleware, flowing through the log line, response body, and X-Request-ID header.
+Logging — console + rotating file (logs/app.log, ~1MB, 3 backups). DEBUG (raw features), INFO (requests/success), WARNING (>200ms), ERROR (failures).
+API versioning — routes live in app/routers/v1.py behind APIRouter(prefix="/api/v1"), included into app in main.py. Shared state (app/state.py) and cross-cutting infra (middleware, exception handlers, model loading) stay in main.py so a future v2 router can reuse them without duplication or circular imports.
+Batch efficiency — /predict and /predict-batch share one inference helper that calls model.predict()/predict_proba() exactly once per request, on the whole array — scikit-learn is vectorized, so this is materially faster than looping per row.
+Configuration — centralized in app/config.py via pydantic-settings. The batch size limit is enforced through a field_validator that reads the setting at request time, not baked into the schema at import time — so it's genuinely reconfigurable without restarting the app, verified by tests that flip the setting mid-run.
+Testing — 37 pytest cases: validation, response shape, both error paths, logging (via caplog), batch prediction (boundary sizes, dynamic config), and model metadata.
 
 ## Request Flow (In Plain Words)
 
@@ -153,12 +129,14 @@ Testing: 16 pytest cases covering validation, response shape, both error paths, 
 
 ## Planned API Endpoints
 
-| Method | Endpoint            | Purpose                      |
-| ------ | ------------------- | ----------------------------- |
-| POST   | `/api/v1/predict`   | Predict Iris flower species  |
-| GET    | `/api/v1/health`    | Check API health             |
-| GET    | `/model-info`       | Get model information        |
-| GET    | `/metrics`          | Provide application metrics  |
+| Method | Endpoint               | Purpose                       | Status     |
+| ------ | -------------------    | ----------------------------- | ---------- |
+| POST   | `/api/v1/predict`      | Predict Iris flower species   | Done       |
+| POST   | `/api/v1/predict-batch`| Predict on a batch            | Done       |
+| GET    | `/api/v1/health`       | Check API health              | Done       |
+| GET    | `/model-info`          | Get model information         | Done       |
+| GET    | `/metrics`             | Provide application metrics   | Planned    | 
+
 
 
 ## Project Roadmap
@@ -175,8 +153,8 @@ Testing: 16 pytest cases covering validation, response shape, both error paths, 
 
 ### Phase 3 — API Features
 - [x] API versioning (`/api/v1` via `APIRouter`, `app/routers/` structure)
-- [ ] Additional endpoints (`/model-info`, `/metrics`)
-- [ ] Configuration management
+- [x] Additional endpoints (`/model-info`, `/metrics`)
+- [x] Configuration management
 - [ ] Automated testing (beyond current pytest suite)
 
 ### Phase 4 — Production Readiness

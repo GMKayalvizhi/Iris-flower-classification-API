@@ -7,7 +7,16 @@ Task 3 — if we only saved the raw model, prediction time would need to
 separately know to scale inputs the exact same way training did. Saving
 the Pipeline means one .joblib file always does both steps, in the same
 order, with the same fitted parameters, every time.
+
+Task 11 addition: alongside the model itself, we also save a small
+model_info.json with metadata about this trained model (type, version,
+training date, feature names, accuracy). The API's /model-info endpoint
+reads this file once at startup rather than hardcoding placeholder text
+or recomputing anything at request time.
 """
+
+import json
+from datetime import date
 
 import joblib
 from sklearn.datasets import load_iris
@@ -18,6 +27,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 MODEL_PATH = "ml/saved_model/model.joblib"
+MODEL_INFO_PATH = "ml/saved_model/model_info.json"
+MODEL_VERSION = "1.0.0"
 
 
 def train_and_save():
@@ -25,6 +36,7 @@ def train_and_save():
     data = load_iris()
     X, y = data.data, data.target
     target_names = data.target_names
+    feature_names = list(data.feature_names)
 
     # 2. Split into train/test
     X_train, X_test, y_train, y_test = train_test_split(
@@ -36,9 +48,10 @@ def train_and_save():
     #    bundling it here demonstrates the pattern you'll need for models
     #    that do (e.g. Logistic Regression, SVM) and keeps preprocessing
     #    and prediction permanently in sync.
+    classifier = RandomForestClassifier(n_estimators=100, random_state=42)
     pipeline = Pipeline([
         ("scaler", StandardScaler()),
-        ("classifier", RandomForestClassifier(n_estimators=100, random_state=42)),
+        ("classifier", classifier),
     ])
 
     # 4. Train
@@ -55,6 +68,23 @@ def train_and_save():
     # 6. Save the whole pipeline (scaler + model together) to disk
     joblib.dump(pipeline, MODEL_PATH)
     print(f"Model saved to: {MODEL_PATH}")
+
+    # 7. Save metadata about this trained model alongside it. This is
+    #    real, generated-at-training-time information -- not hardcoded
+    #    placeholder text -- so /model-info always reflects the model
+    #    that's actually loaded, even after retraining.
+    model_info = {
+        "model_type": type(classifier).__name__,
+        "model_version": MODEL_VERSION,
+        "trained_on": date.today().isoformat(),
+        "feature_names": feature_names,
+        "target_names": list(target_names),
+        "n_estimators": classifier.n_estimators,
+        "test_accuracy": round(float(accuracy), 4),
+    }
+    with open(MODEL_INFO_PATH, "w") as f:
+        json.dump(model_info, f, indent=2)
+    print(f"Model info saved to: {MODEL_INFO_PATH}")
 
     return accuracy
 

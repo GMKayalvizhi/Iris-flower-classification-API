@@ -1,3 +1,5 @@
+from typing import List
+
 from pydantic import BaseModel, Field
 
 
@@ -60,4 +62,98 @@ class PredictionOutput(BaseModel):
                 "request_id": "not-yet-implemented",
             }
         }
-    }    
+    }
+
+
+class PredictionBatchInput(BaseModel):
+    """
+    Input schema for batch Iris species prediction.
+
+    Wraps a list of IrisInput rather than accepting a bare JSON array at
+    the top level -- a named field (`inputs`) leaves room to add
+    batch-level options later (e.g. a flag to skip validation on
+    individual rows) without breaking the request shape, the same reason
+    the response is wrapped too. Bounded to 1-100 items: an empty batch
+    is a client mistake worth rejecting explicitly (422) rather than
+    silently returning an empty response, and an upper bound keeps one
+    request from becoming an accidental load test.
+    """
+
+    inputs: List[IrisInput] = Field(
+        ..., min_length=1, max_length=100,
+        description="1 to 100 Iris measurements to predict in a single call"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "inputs": [
+                    {"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2},
+                    {"sepal_length": 6.7, "sepal_width": 3.1, "petal_length": 4.7, "petal_width": 1.5},
+                ]
+            }
+        }
+    }
+
+
+class PredictionItem(BaseModel):
+    """
+    A single prediction within a batch response.
+ 
+    Deliberately leaner than PredictionOutput -- no request_id here.
+    Every item in one /predict-batch call was produced by the same
+    request, so repeating the same request_id on every list element
+    (as PredictionBatchOutput's own request_id already does once) is
+    pure duplication: same value, n times, no new information, larger
+    response payload for no benefit. request_id belongs once, at the
+    batch level.
+    """
+ 
+    prediction: str = Field(..., description="Predicted Iris species name")
+    confidence: float = Field(..., description="Model's confidence in the prediction (0–1)")
+    model_version: str = Field(..., description="Version identifier of the model that served this prediction")
+ 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "prediction": "setosa",
+                "confidence": 0.97,
+                "model_version": "1.0.0",
+            }
+        }
+    }
+
+
+class PredictionBatchOutput(BaseModel):
+    """
+    Response schema for a batch prediction request.
+
+    `request_id` here is the SAME id as the one on the request/response
+    header for this call -- one id per HTTP request, not one per item in
+    the batch -- so a batch call traces as a single unit in the logs,
+    consistent with how every other endpoint's tracing works.
+    """
+
+    predictions: List[PredictionItem] = Field(
+        ..., description="One prediction per input, in the same order submitted"
+    )
+    count: int = Field(..., description="Number of predictions returned")
+    request_id: str = Field(..., description="Unique identifier for this batch request")
+
+
+class ModelInfo(BaseModel):
+    """
+    Response schema for /model-info.
+
+    All values here are read from ml/saved_model/model_info.json, written
+    by the training script at training time -- never hardcoded in the API
+    code, so this always reflects the model that's actually loaded.
+    """
+
+    model_type: str = Field(..., description="The scikit-learn estimator class name")
+    model_version: str = Field(..., description="Version identifier of the currently loaded model")
+    trained_on: str = Field(..., description="Date the loaded model was trained (ISO format)")
+    feature_names: List[str] = Field(..., description="Feature names, in the order the model expects them")
+    target_names: List[str] = Field(..., description="Possible prediction class labels")
+    n_estimators: int = Field(..., description="Number of trees in the Random Forest")
+    test_accuracy: float = Field(..., description="Accuracy on the held-out test set at training time")

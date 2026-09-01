@@ -73,15 +73,24 @@ def _to_feature_array(inputs: list[IrisInput]) -> np.ndarray:
 def _get_model_version() -> str:
     """
     Single place that reads the currently-loaded model's version.
-
+ 
     Both /predict and /predict-batch need this, and duplicating the
     dict lookup in two places is exactly how it drifted before (one
     hardcoded "v1" string vs. the real "1.0.0" from model_info.json).
     Routing both endpoints through one function means there's only one
     place to fix if the lookup logic ever needs to change.
+ 
+    Raises a clear, explicit error if model_info was never loaded (e.g.
+    the app started before model_info.json existed) rather than letting
+    a bare KeyError surface with no context about what's actually
+    missing. Callers (predict/predict_batch) already wrap this in their
+    own try/except, so this still ends up as a safe 500 response --
+    this just makes the server-side log line say something useful
+    instead of a raw "KeyError: 'model_info'".
     """
+    if "model_info" not in ml_models:
+        raise RuntimeError("model_info was not loaded at startup")
     return ml_models["model_info"]["model_version"]
-
 
 @router.get("/health")
 def health():
@@ -182,8 +191,16 @@ def predict_batch(batch_input: PredictionBatchInput, request: Request):
 @router.get("/model-info", response_model=ModelInfo)
 def model_info(request: Request):
     request_id = request.state.request_id
-    logger.info(f"request_id={request_id} model-info requested")
-    return ModelInfo(**ml_models["model_info"])
+
+    try:
+        info = ml_models["model_info"]
+        logger.info(f"request_id={request_id} model-info requested")
+        return ModelInfo(**info)
+
+    except Exception as e:
+        logger.error(f"request_id={request_id} Unexpected error building model info: {e}")
+        raise HTTPException(status_code=500,
+                            detail={"message": "Failed to retrieve model info", "request_id": request_id})
 
 
 # --- Task 10 challenge: what changes for /api/v2/predict? ---

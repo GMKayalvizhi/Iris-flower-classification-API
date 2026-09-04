@@ -1,20 +1,10 @@
-# app/config.py
+# Central configuration for the Iris API.
+# Settings are loaded from environment variables and a local .env file.
+# This keeps configuration separate from code and allows the same
+# application to run across different environments without code changes.
 #
-# Central configuration for the Iris API, sourced from environment
-# variables (and a local .env file for development convenience). This
-# follows the twelve-factor app principle: config lives in the
-# environment, not hardcoded in code, so the exact same code can run in
-# local / staging / production with different values -- no code edits,
-# no per-environment branches in the app itself.
-#
-# IMPORTANT: this module must never import anything from the rest of
-# app/. Every other module (logging_config.py, schemas.py, main.py)
-# imports `settings` FROM here at import time or startup time. If this
-# file imported something from, say, app.state, and that module (or one
-# of its dependents) imported config.py back, you'd get the same kind
-# of circular import problem Task 10 solved with app/state.py -- so
-# config.py has to sit below everything else, with zero dependencies on
-# the rest of the app.
+# This module has no dependencies on other app modules to avoid
+# circular import issues.
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

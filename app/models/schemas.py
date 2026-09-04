@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -56,6 +56,7 @@ class PredictionOutput(BaseModel):
 
 
     model_config = {
+        "extra": "forbid",
         "json_schema_extra": {
             "example": {
                 "prediction": "setosa",
@@ -119,25 +120,24 @@ class PredictionItem(BaseModel):
     """
     A single prediction within a batch response.
  
-    Deliberately leaner than PredictionOutput -- no request_id here.
-    Every item in one /predict-batch call was produced by the same
-    request, so repeating the same request_id on every list element
-    (as PredictionBatchOutput's own request_id already does once) is
-    pure duplication: same value, n times, no new information, larger
-    response payload for no benefit. request_id belongs once, at the
-    batch level.
+    Deliberately leaner than PredictionOutput -- no request_id AND no
+    model_version here. Every item in one /predict-batch call is
+    produced by the SAME request against the SAME loaded model, so
+    both would repeat an identical value n times with zero new
+    information per item -- exactly the same duplication problem
+    request_id had (and was fixed for) at the batch level. Both belong
+    once, on PredictionBatchOutput, not per item.
     """
  
     prediction: str = Field(..., description="Predicted Iris species name")
     confidence: float = Field(..., description="Model's confidence in the prediction (0–1)")
-    model_version: str = Field(..., description="Version identifier of the model that served this prediction")
- 
+    
     model_config = {
+        "extra": "forbid",
         "json_schema_extra": {
             "example": {
                 "prediction": "setosa",
                 "confidence": 0.97,
-                "model_version": "1.0.0",
             }
         }
     }
@@ -146,18 +146,21 @@ class PredictionItem(BaseModel):
 class PredictionBatchOutput(BaseModel):
     """
     Response schema for a batch prediction request.
-
-    `request_id` here is the SAME id as the one on the request/response
-    header for this call -- one id per HTTP request, not one per item in
-    the batch -- so a batch call traces as a single unit in the logs,
-    consistent with how every other endpoint's tracing works.
+ 
+    `request_id` and `model_version` both live here, once, rather than
+    per item -- one HTTP request, one loaded model, so both values are
+    invariant across every item in the batch. Repeating either per item
+    would be pure duplication with no additional information.
     """
 
     predictions: List[PredictionItem] = Field(
         ..., description="One prediction per input, in the same order submitted"
     )
     count: int = Field(..., description="Number of predictions returned")
+    model_version: str = Field(..., description="Version identifier of the model that served this batch")
     request_id: str = Field(..., description="Unique identifier for this batch request")
+
+    model_config = {"extra": "forbid"}
 
 
 class ModelInfo(BaseModel):
@@ -176,3 +179,111 @@ class ModelInfo(BaseModel):
     target_names: List[str] = Field(..., description="Possible prediction class labels")
     n_estimators: int = Field(..., description="Number of trees in the Random Forest")
     test_accuracy: float = Field(..., description="Accuracy on the held-out test set at training time")
+
+    model_config = {"extra": "forbid"}
+
+class PredictionOutputV2(BaseModel):
+    """
+    Response schema for POST /api/v2/predict.
+ 
+    Task 14: the deliberate breaking change from v1 -- adds
+    `probabilities`, a full confidence breakdown across all three
+    classes, not just the winning one. PredictionOutput (v1) is
+    completely untouched by this class; the two schemas are entirely
+    independent, so v1 clients see zero difference no matter what v2
+    does.
+ 
+    Deliberately NOT a subclass of PredictionOutput. Subclassing here
+    would create a real coupling: a field renamed or removed on
+    PredictionOutput would silently ripple into this schema too. Since
+    the whole point of versioning is that v1 and v2 can evolve
+    independently, keeping them as two separate, unrelated classes (even
+    though they currently share several field names) is the safer
+    choice long-term.
+    """
+ 
+    prediction: str = Field(..., description="Predicted Iris species name")
+    confidence: float = Field(..., description="Model's confidence in the predicted class (0-1)")
+    probabilities: Dict[str, float] = Field(
+        ..., description="Full probability distribution across all three classes"
+    )
+    model_version: str = Field(..., description="Version identifier of the model that served this prediction")
+    request_id: str = Field(..., description="Unique identifier for this request")
+ 
+    model_config = {
+        "extra": "forbid",
+        "json_schema_extra": {
+            "example": {
+                "prediction": "setosa",
+                "confidence": 0.97,
+                "probabilities": {"setosa": 0.97, "versicolor": 0.02, "virginica": 0.01},
+                "model_version": "1.0.0",
+                "request_id": "a1b2c3d4-...",
+            }
+        }
+    }
+
+class PredictionItemV2(BaseModel):
+    """
+    A single prediction within a v2 batch response.
+ 
+    Same relationship to PredictionBatchOutputV2 as PredictionItem has
+    to PredictionBatchOutput (v1): no request_id & model_version per item, since the
+    batch wrapper already carries one shared request_id for the whole
+    call. The only difference from v1's PredictionItem is the added
+    `probabilities` field -- consistent with the same breaking change
+    applied to /api/v2/predict.
+    """
+ 
+    prediction: str = Field(..., description="Predicted Iris species name")
+    confidence: float = Field(..., description="Model's confidence in the predicted class (0-1)")
+    probabilities: Dict[str, float] = Field(
+        ..., description="Full probability distribution across all three classes"
+    )
+ 
+    model_config = {
+        "extra": "forbid",
+        "json_schema_extra": {
+            "example": {
+                "prediction": "setosa",
+                "confidence": 0.97,
+                "probabilities": {"setosa": 0.97, "versicolor": 0.02, "virginica": 0.01},
+            }
+        }
+    }
+ 
+ 
+class PredictionBatchOutputV2(BaseModel):
+    """
+    Response schema for POST /api/v2/predict-batch.
+ 
+    Reuses PredictionBatchInput (v1's request schema) unchanged -- the
+    breaking change between v1 and v2 is only ever about the RESPONSE
+    shape, never the request shape, same principle as /predict vs
+    /predict-batch's own single-vs-batch relationship.
+    """
+ 
+    predictions: List[PredictionItemV2] = Field(
+        ..., description="One prediction per input, in the same order submitted"
+    )
+    count: int = Field(..., description="Number of predictions returned")
+    model_version: str = Field(..., description="Version identifier of the model that served this batch")
+    request_id: str = Field(..., description="Unique identifier for this batch request")
+
+    model_config = {"extra": "forbid"}
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+     

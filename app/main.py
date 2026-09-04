@@ -10,6 +10,7 @@ from app.config import settings
 from app.logging_config import logger
 from app.state import ml_models
 from app.routers.v1 import router as v1_router
+from app.routers.v2 import router as v2_router
 
 
 @asynccontextmanager
@@ -70,3 +71,4 @@ async def value_error_handler(request: Request, exc: ValueError):
 
 
 app.include_router(v1_router)
+app.include_router(v2_router)

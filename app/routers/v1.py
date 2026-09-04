@@ -33,10 +33,10 @@ SPECIES_MAP = {
 def _run_inference(model, features: np.ndarray):
     """
     Run inference on a batch of feature rows in a single vectorized call.
-
+ 
     Task 11 investigation -- is it better to call model.predict() once on
     the whole batch, or in a loop?
-
+ 
     Always once on the whole batch. scikit-learn estimators (this
     RandomForestClassifier included) are built on NumPy and are
     vectorized internally: a single call on an (n_rows, 4) array runs
@@ -48,21 +48,39 @@ def _run_inference(model, features: np.ndarray):
     (a 1-row array) and /predict-batch (an n-row array) for exactly this
     reason -- there should only be one place in the code that calls
     .predict(), so both endpoints always benefit from this automatically.
-
-    Returns a list of (species_name, confidence) tuples, one per input
-    row, in the same order as the input array.
+ 
+    Task 14 addition: this now always computes and returns the FULL
+    probability breakdown across all classes, not just the winning
+    class's confidence. v1 routes only use "species"/"confidence" and
+    ignore "probabilities" -- v2 uses all three. This means v2 never
+    has to call model.predict_proba() a second time; the work is
+    already done once, here, shared by both API versions. Widening
+    what this helper returns is safe for v1 -- v1's PredictionOutput
+    schema simply doesn't include the extra data, so nothing about
+    v1's actual HTTP response changes.
+ 
+    Returns a list of dicts, one per input row, in the same order as
+    the input array:
+        {"species": str, "confidence": float, "probabilities": {species: float, ...}}
     """
     predictions = model.predict(features)
-    probabilities = model.predict_proba(features)
-
+    probabilities_matrix = model.predict_proba(features)
+ 
     results = []
-    for pred, probs in zip(predictions, probabilities):
+    for pred, probs in zip(predictions, probabilities_matrix):
         species_name = SPECIES_MAP[int(pred)]
         confidence = float(probs[pred])
-        results.append((species_name, confidence))
+        probability_breakdown = {
+            SPECIES_MAP[i]: float(p) for i, p in enumerate(probs)
+        }
+        results.append({
+            "species": species_name,
+            "confidence": confidence,
+            "probabilities": probability_breakdown,
+        })
     return results
-
-
+ 
+ 
 def _to_feature_array(inputs: list[IrisInput]) -> np.ndarray:
     return np.array([
         [item.sepal_length, item.sepal_width, item.petal_length, item.petal_width]
@@ -117,7 +135,9 @@ def predict(input_data: IrisInput, request: Request):
 
         logger.debug(f"request_id={request_id} raw features array: {features.tolist()}")
 
-        species_name, confidence = _run_inference(model, features)[0]
+        result = _run_inference(model, features)[0]
+        species_name = result["species"]
+        confidence = result["confidence"]
 
         logger.info(
             f"request_id={request_id} prediction={species_name} "
@@ -152,15 +172,14 @@ def predict_batch(batch_input: PredictionBatchInput, request: Request):
         logger.debug(f"request_id={request_id} batch raw features shape: {features.shape}")
 
         results = _run_inference(model, features)
-
         model_version = _get_model_version()
+
         predictions = [
             PredictionItem(
-                prediction=species_name,
-                confidence=confidence,
-                model_version=model_version,
-            )
-            for species_name, confidence in results
+                prediction=result["species"],
+                confidence=result["confidence"],
+            )     
+            for result in results
         ]
 
         duration_ms = round((time.time() - start_time) * 1000, 2)
@@ -177,6 +196,7 @@ def predict_batch(batch_input: PredictionBatchInput, request: Request):
         return PredictionBatchOutput(
             predictions=predictions,
             count=batch_size,
+            model_version=model_version,
             request_id=request_id,
         )
 
@@ -203,31 +223,3 @@ def model_info(request: Request):
                             detail={"message": "Failed to retrieve model info", "request_id": request_id})
 
 
-# --- Task 10 challenge: what changes for /api/v2/predict? ---
-#
-# If v2 needs to return an extra field (e.g. probabilities for all three
-# classes, not just the winning one), the wrong move is to add that field
-# to the existing PredictionOutput model and reuse this same predict()
-# function under a v2 prefix. That mutates the v1 contract too -- any
-# v1 client parsing the response strictly (or any test asserting exact
-# response shape) could break, even though nobody touched /api/v1/predict's
-# URL.
-#
-# The right move (what I'll build in Task 14):
-#   1. A new schema, e.g. PredictionOutputV2(PredictionOutput), adding the
-#      new field(s) without touching PredictionOutput itself.
-#   2. A new app/routers/v2.py with its own APIRouter(prefix="/api/v2"),
-#      its own predict() function using response_model=PredictionOutputV2.
-#   3. main.py includes both routers. v1 and v2 run side by side,
-#      unaware of each other, so v1 clients see zero change.
-#   4. Shared logic (loading the model, building `features`, computing
-#      SPECIES_MAP) is a good candidate to factor into a small helper
-#      function both routers call, so the two versions don't silently
-#      drift apart on the parts that *should* stay identical -- only the
-#      response shape differs. Task 11's _run_inference() and
-#      _to_feature_array() are the first real example of this pattern:
-#      a v2 router could import and reuse them directly.
-#
-# The general principle: a version boundary should only ever widen or
-# freeze a contract, never quietly modify one client's shape while adding
-# a field for another.

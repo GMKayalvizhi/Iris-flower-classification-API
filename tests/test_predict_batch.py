@@ -13,12 +13,12 @@ def test_batch_response_matches_expected_shape(client, batch_input):
     response = client.post("/api/v1/predict-batch", json=batch_input)
     assert response.status_code == 200
     body = response.json()
-    assert set(body.keys()) == {"predictions", "count", "request_id"}
+    assert set(body.keys()) == {"predictions", "count", "model_version", "request_id"}
+    assert isinstance(body["model_version"], str)
     for item in body["predictions"]:
-        assert set(item.keys()) == {"prediction", "confidence", "model_version"}
+        assert set(item.keys()) == {"prediction", "confidence"}
         assert isinstance(item["prediction"], str)
         assert isinstance(item["confidence"], float)
-        assert isinstance(item["model_version"], str)
 
 
 def test_batch_predictions_preserve_input_order(client):

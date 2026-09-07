@@ -31,13 +31,15 @@ Run tests with `pytest -v`.
 
 ## API Contract
 
-All routes are namespaced under `/api/v1/...`, so the contract can evolve
-behind a future `/api/v2/...` without breaking existing clients.
+Two API versions run side by side. v1's contract is frozen; v2 adds a
+deliberate breaking change (a full probability breakdown) without
+touching v1 at all — proven by tests in `tests/test_versioning.py` that
+call both versions with the same input and assert v1's shape never changed.
 
-### `POST /api/v1/predict`
+### `POST /api/v1/predict` · `POST /api/v2/predict`
 
 ```json
-// Request
+// Request (same for both versions)
 {"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}
 ```
 
@@ -49,33 +51,48 @@ behind a future `/api/v2/...` without breaking existing clients.
 | petal_width | 0.1 | 2.5 |
 
 ```json
-// 200 response
+// v1 — 200 response
 {"prediction": "setosa", "confidence": 1.0, "model_version": "1.0.0", "request_id": "eae99247-..."}
+
+// v2 — 200 response (breaking change: adds full probability breakdown)
+{
+  "prediction": "setosa",
+  "confidence": 1.0,
+  "probabilities": {"setosa": 1.0, "versicolor": 0.0, "virginica": 0.0},
+  "model_version": "1.0.0",
+  "request_id": "a1b2c3d4-..."
+}
 ```
 
-- **422** — Pydantic validation error, naming the exact field/rule/value.
+- **422** — Pydantic validation error, naming the exact field/rule/value (same rules, both versions).
 - **400 / 500** — a `ValueError` (bad shape reaching the model) returns 400; anything else returns 500. Both include `request_id`; neither exposes internals.
 
-### `POST /api/v1/predict-batch`
+### `POST /api/v1/predict-batch` · `POST /api/v2/predict-batch`
 
 Accepts 1–`MAX_BATCH_SIZE` inputs (default 100). Runs inference once on
-the whole batch (vectorized), never in a per-row loop.
+the whole batch (vectorized), never in a per-row loop. `model_version`
+and `request_id` live once at the batch level, not repeated per item —
+every item in one call shares the same request and the same loaded model.
 
 ```json
-// Request
-{"inputs": [{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}]}
-
-// 200 response
+// v1 — 200 response
 {
-  "predictions": [{"prediction": "setosa", "confidence": 1.0, "model_version": "1.0.0"}],
+  "predictions": [{"prediction": "setosa", "confidence": 1.0}],
   "count": 1,
+  "model_version": "1.0.0",
+  "request_id": "a8a8cff5-..."
+}
+
+// v2 — 200 response
+{
+  "predictions": [{"prediction": "setosa", "confidence": 1.0, "probabilities": {"setosa": 1.0, "versicolor": 0.0, "virginica": 0.0}}],
+  "count": 1,
+  "model_version": "1.0.0",
   "request_id": "a8a8cff5-..."
 }
 ```
 
-One `request_id` for the whole batch, not per item — every item came from
-the same request. Exceeding the batch limit or sending an empty list
-returns 422.
+Exceeding the batch limit or sending an empty list returns 422 (same limit, both versions).
 
 ### `GET /api/v1/model-info`
 
@@ -104,15 +121,15 @@ even with no `.env` present.
 
 ## Engineering Notes
 
-- **Validation** — feature-specific `ge`/`le` bounds derived from the dataset, plus `extra="forbid"`, reject bad input before it reaches the model.
-- **Response shape** — every endpoint has a strict `response_model`, so no unintended fields leak out.
-- **Error handling** — `ValueError` → 400, anything else → 500, consistently across `/predict`, `/predict-batch`, `/model-info`. Client sees a safe generic message; the real error is logged server-side only.
+- **Validation** — feature-specific `ge`/`le` bounds derived from the dataset. `extra="forbid"` on every schema, request AND response — unexpected input is rejected before it reaches the model, and any accidental extra field on a response object raises immediately instead of silently leaking or dropping.
+- **Response shape** — every endpoint has a strict `response_model`; no unintended fields ever reach the client.
+- **Error handling** — `ValueError` → 400, anything else → 500, consistently across every endpoint, both versions. Client sees a safe generic message; the real error is logged server-side only.
 - **Tracing** — one `request_id` per request, generated once in middleware, flowing through the log line, response body, and `X-Request-ID` header.
 - **Logging** — console + rotating file (`logs/app.log`, ~1MB, 3 backups). DEBUG (raw features), INFO (requests/success), WARNING (>200ms), ERROR (failures).
-- **API versioning** — routes live in `app/routers/v1.py` behind `APIRouter(prefix="/api/v1")`, included into `app` in `main.py`. Shared state (`app/state.py`) and cross-cutting infra (middleware, exception handlers, model loading) stay in `main.py` so a future `v2` router can reuse them without duplication or circular imports.
-- **Batch efficiency** — `/predict` and `/predict-batch` share one inference helper that calls `model.predict()`/`predict_proba()` exactly once per request, on the whole array — scikit-learn is vectorized, so this is materially faster than looping per row.
-- **Configuration** — centralized in `app/config.py` via `pydantic-settings`. The batch size limit is enforced through a `field_validator` that reads the setting at *request time*, not baked into the schema at import time — so it's genuinely reconfigurable without restarting the app, verified by tests that flip the setting mid-run.
-- **Testing** — 37 pytest cases: validation, response shape, both error paths, logging (via `caplog`), batch prediction (boundary sizes, dynamic config), and model metadata.
+- **API versioning** — `app/routers/v1.py` and `v2.py`, each their own `APIRouter`, both included into `app` in `main.py`. v2 imports and reuses v1's inference helpers directly rather than duplicating them — the only genuinely new code per version is its own schema and route logic. Proven independent with tests that construct v1's schema with v2-shaped data and confirm it's rejected, not silently accepted.
+- **Batch efficiency** — every predict/predict-batch route (both versions) shares one inference helper that calls `model.predict()`/`predict_proba()` exactly once per request, on the whole array.
+- **Configuration** — centralized in `app/config.py` via `pydantic-settings`. The batch size limit is enforced through a `field_validator` that reads the setting at *request time*, so it's genuinely reconfigurable without restarting the app.
+- **Testing** — 59 pytest cases across validation, response shape, both error paths, logging, batch prediction, model metadata, and cross-version isolation (v1/v2 run side by side, each independently and jointly verified).
 
 ## Technology Stack
 
@@ -124,6 +141,8 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 |---|---|---|---|
 | POST | `/api/v1/predict` | Predict one input | Done |
 | POST | `/api/v1/predict-batch` | Predict on a batch | Done |
+| POST | `/api/v2/predict` | Predict one input + full probability breakdown | Done |
+| POST | `/api/v2/predict-batch` | Predict on a batch + full probability breakdown | Done |
 | GET | `/api/v1/model-info` | Model metadata | Done |
 | GET | `/api/v1/health` | Health check | Done |
 | GET | `/metrics` | App metrics | Planned |
@@ -142,16 +161,17 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 
 ### Phase 3 — API Features
 - [x] API versioning (`/api/v1` via `APIRouter`, `app/routers/` structure)
-- [x] Additional endpoints (`/model-info`, `/metrics`)
-- [x] Configuration management
-- [ ] Automated testing (beyond current pytest suite)
+- [x] Additional endpoints (`/predict-batch`, `/model-info`)
+- [x] Configuration management (`pydantic-settings`, `.env` / `.env.example`)
+- [x] Automated testing (59 pytest cases, organized in `tests/`)
+- [x] Build and test the breaking `/v2` change (full parity with v1, cross-version isolation proven by tests)
 
 ### Phase 4 — Production Readiness
 - [ ] Docker & Docker Compose
 - [ ] API-key security & CORS configuration
 
 ### Phase 5 — Monitoring & Deployment
-- [ ] Prometheus metrics
+- [ ] Prometheus metrics (`/metrics`)
 - [ ] Load testing
 - [ ] Cloud deployment
 - [ ] Final documentation

@@ -29,6 +29,19 @@ uvicorn app.main:app --reload
 Open **http://127.0.0.1:8000/docs** for interactive API docs.
 Run tests with `pytest -v`.
 
+## Running with Docker
+
+No local Python environment required — the image bundles the app, its
+dependencies, and the trained model.
+
+```bash
+docker build -t ml-api:v1 .
+docker run -p 8000:8000 --env-file .env ml-api:v1
+```
+
+Open **http://localhost:8000/docs** — identical behavior to the local run
+above. Image size: ~169MB.
+
 ## API Contract
 
 Two API versions run side by side. v1's contract is frozen; v2 adds a
@@ -129,6 +142,7 @@ even with no `.env` present.
 - **API versioning** — `app/routers/v1.py` and `v2.py`, each their own `APIRouter`, both included into `app` in `main.py`. v2 imports and reuses v1's inference helpers directly rather than duplicating them — the only genuinely new code per version is its own schema and route logic. Proven independent with tests that construct v1's schema with v2-shaped data and confirm it's rejected, not silently accepted.
 - **Batch efficiency** — every predict/predict-batch route (both versions) shares one inference helper that calls `model.predict()`/`predict_proba()` exactly once per request, on the whole array.
 - **Configuration** — centralized in `app/config.py` via `pydantic-settings`. The batch size limit is enforced through a `field_validator` that reads the setting at *request time*, so it's genuinely reconfigurable without restarting the app.
+- **Containerization** — single-stage `python:3.11-slim` build, layered so `requirements.txt` installs in its own cached layer separate from app code, keeping rebuilds fast. `.dockerignore` excludes `venv/`, `.env`, `logs/`, and test artifacts from the image. 
 - **Testing** — 59 pytest cases across validation, response shape, both error paths, logging, batch prediction, model metadata, and cross-version isolation (v1/v2 run side by side, each independently and jointly verified).
 
 ## Technology Stack
@@ -167,7 +181,8 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 - [x] Build and test the breaking `/v2` change (full parity with v1, cross-version isolation proven by tests)
 
 ### Phase 4 — Production Readiness
-- [ ] Docker & Docker Compose
+- [x] Docker
+- [ ] Docker Compose
 - [ ] API-key security & CORS configuration
 
 ### Phase 5 — Monitoring & Deployment

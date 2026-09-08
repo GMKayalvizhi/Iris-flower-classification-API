@@ -214,7 +214,7 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 
 ### Phase 4 — Production Readiness
 - [x] Docker
-- [ ] Docker Compose
+- [x] Docker Compose
 - [ ] API-key security & CORS configuration
 
 ### Phase 5 — Monitoring & Deployment

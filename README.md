@@ -29,6 +29,51 @@ uvicorn app.main:app --reload
 Open **http://127.0.0.1:8000/docs** for interactive API docs.
 Run tests with `pytest -v`.
 
+## Running with Docker Compose
+
+Single command starts the full stack — no local Python environment,
+no manual `docker build` / `docker run` steps required.
+
+**First run, or after any code/dependency/Dockerfile change:**
+
+```bash
+docker compose up --build
+```
+
+**Subsequent runs, if nothing has changed since the last build:**
+
+```bash
+docker compose up
+```
+
+`--build` forces Compose to rebuild the image before starting; without
+it, Compose reuses the existing image as-is, which is faster but will
+silently run stale code if something was edited and not rebuilt. When
+in doubt, use `--build` — it costs a few extra seconds, not correctness.
+
+Open **http://localhost:8000/docs** once it's running.
+
+**To stop:**
+
+```bash
+docker compose down
+```
+
+This stops and removes the container *and* the network Compose created
+for it — a full teardown, safely repeatable any time.
+
+The `ml/saved_model/` and `logs/` folders are bind-mounted from the host
+into the container, so:
+- A retrained model (`ml/saved_model/model.joblib`) is picked up on the
+  next container restart — no image rebuild needed.
+- Log entries written by the app land directly in `logs/app.log` on the
+  host, and survive even after `docker compose down` removes the
+  container.
+
+(This bind-mount approach is a local-development convenience. A real
+cloud deployment has no shared host filesystem to mount — it would pull
+the model from object storage, e.g. S3, at container startup instead.)
+
 ## API Contract
 
 Two API versions run side by side. v1's contract is frozen; v2 adds a
@@ -129,6 +174,7 @@ even with no `.env` present.
 - **API versioning** — `app/routers/v1.py` and `v2.py`, each their own `APIRouter`, both included into `app` in `main.py`. v2 imports and reuses v1's inference helpers directly rather than duplicating them — the only genuinely new code per version is its own schema and route logic. Proven independent with tests that construct v1's schema with v2-shaped data and confirm it's rejected, not silently accepted.
 - **Batch efficiency** — every predict/predict-batch route (both versions) shares one inference helper that calls `model.predict()`/`predict_proba()` exactly once per request, on the whole array.
 - **Configuration** — centralized in `app/config.py` via `pydantic-settings`. The batch size limit is enforced through a `field_validator` that reads the setting at *request time*, so it's genuinely reconfigurable without restarting the app.
+- **Containerization** — single-stage `python:3.11-slim` build, layered so `requirements.txt` installs in its own cached layer separate from app code, keeping rebuilds fast. `.dockerignore` excludes `venv/`, `.env`, `logs/`, and test artifacts from the image. 
 - **Testing** — 59 pytest cases across validation, response shape, both error paths, logging, batch prediction, model metadata, and cross-version isolation (v1/v2 run side by side, each independently and jointly verified).
 
 ## Technology Stack
@@ -167,7 +213,8 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 - [x] Build and test the breaking `/v2` change (full parity with v1, cross-version isolation proven by tests)
 
 ### Phase 4 — Production Readiness
-- [ ] Docker & Docker Compose
+- [x] Docker
+- [x] Docker Compose
 - [ ] API-key security & CORS configuration
 
 ### Phase 5 — Monitoring & Deployment

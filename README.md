@@ -29,18 +29,50 @@ uvicorn app.main:app --reload
 Open **http://127.0.0.1:8000/docs** for interactive API docs.
 Run tests with `pytest -v`.
 
-## Running with Docker
+## Running with Docker Compose
 
-No local Python environment required — the image bundles the app, its
-dependencies, and the trained model.
+Single command starts the full stack — no local Python environment,
+no manual `docker build` / `docker run` steps required.
+
+**First run, or after any code/dependency/Dockerfile change:**
 
 ```bash
-docker build -t ml-api:v1 .
-docker run -p 8000:8000 --env-file .env ml-api:v1
+docker compose up --build
 ```
 
-Open **http://localhost:8000/docs** — identical behavior to the local run
-above. Image size: ~169MB.
+**Subsequent runs, if nothing has changed since the last build:**
+
+```bash
+docker compose up
+```
+
+`--build` forces Compose to rebuild the image before starting; without
+it, Compose reuses the existing image as-is, which is faster but will
+silently run stale code if something was edited and not rebuilt. When
+in doubt, use `--build` — it costs a few extra seconds, not correctness.
+
+Open **http://localhost:8000/docs** once it's running.
+
+**To stop:**
+
+```bash
+docker compose down
+```
+
+This stops and removes the container *and* the network Compose created
+for it — a full teardown, safely repeatable any time.
+
+The `ml/saved_model/` and `logs/` folders are bind-mounted from the host
+into the container, so:
+- A retrained model (`ml/saved_model/model.joblib`) is picked up on the
+  next container restart — no image rebuild needed.
+- Log entries written by the app land directly in `logs/app.log` on the
+  host, and survive even after `docker compose down` removes the
+  container.
+
+(This bind-mount approach is a local-development convenience. A real
+cloud deployment has no shared host filesystem to mount — it would pull
+the model from object storage, e.g. S3, at container startup instead.)
 
 ## API Contract
 

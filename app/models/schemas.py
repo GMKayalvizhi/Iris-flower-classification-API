@@ -105,6 +105,7 @@ class PredictionBatchInput(BaseModel):
         return inputs
  
     model_config = {
+        "extra": "forbid",
         "json_schema_extra": {
             "example": {
                 "inputs": [

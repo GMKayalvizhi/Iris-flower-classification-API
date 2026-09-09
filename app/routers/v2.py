@@ -12,10 +12,16 @@ from app.models.schemas import (
 )
 from app.logging_config import logger
 from app.state import ml_models
+from app.security import verify_api_key
+from fastapi import Depends
 
 from app.routers.v1 import _run_inference, _to_feature_array, _get_model_version
 
-router = APIRouter(prefix = "/api/v2")
+router = APIRouter(
+    prefix="/api/v2",
+    tags=["v2"],
+    dependencies=[Depends(verify_api_key)],
+)
 
 
 @router.post("/predict", response_model=PredictionOutputV2)

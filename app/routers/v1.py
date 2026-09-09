@@ -20,8 +20,17 @@ from app.models.schemas import (
 )
 from app.logging_config import logger
 from app.state import ml_models
+from app.security import verify_api_key
+from fastapi import Depends
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(verify_api_key)],
+)
+
+# Unprotected — infrastructure/monitoring needs to reach this without a key
+health_router = APIRouter(prefix="/api/v1", tags=["v1"])
 
 SPECIES_MAP = {
     0: "setosa",
@@ -110,7 +119,13 @@ def _get_model_version() -> str:
         raise RuntimeError("model_info was not loaded at startup")
     return ml_models["model_info"]["model_version"]
 
-@router.get("/health")
+"""/health is intentionally excluded from API-key authentication 
+because it is used by infrastructure and monitoring systems to 
+verify service availability. The endpoint returns only minimal 
+health information and does not expose sensitive data. Prediction 
+endpoints remain protected by API-key authentication."""
+
+@health_router.get("/health")
 def health():
     model_loaded = "iris_classifier" in ml_models
     if model_loaded:

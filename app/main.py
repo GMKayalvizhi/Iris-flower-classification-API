@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import joblib
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.logging_config import logger
 from app.state import ml_models
 from app.routers.v1 import router as v1_router
+from app.routers.v1 import health_router as v1_health_router
 from app.routers.v2 import router as v2_router
 
 
@@ -30,6 +32,16 @@ async def lifespan(app: FastAPI):
  
  
 app = FastAPI(title=settings.API_TITLE, lifespan=lifespan)
+
+allowed_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",")]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["X-API-Key", "Content-Type"],
+)
 
 
 @app.middleware("http")
@@ -69,6 +81,16 @@ async def value_error_handler(request: Request, exc: ValueError):
         content={"detail": "Invalid input shape or value for prediction", "request_id": request_id},
     )
 
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(f"request_id={request_id} Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal error occurred", "request_id": request_id},
+    )
+
 
 app.include_router(v1_router)
+app.include_router(v1_health_router)
 app.include_router(v2_router)

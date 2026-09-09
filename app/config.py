@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     MAX_BATCH_SIZE: int = 100
     API_TITLE: str = "Iris Flower Classification API"
+    API_KEY: str = "changeme-in-env"  # placeholder default; real value comes from .env
+    ALLOWED_ORIGINS: str = "http://localhost:3000"  # comma-separated list
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from app.config import settings
 from app.main import app
 
 
@@ -10,8 +11,14 @@ def client():
     loading in main.py's `lifespan()` function) actually runs. A bare
     TestClient(app) without this would skip startup entirely and every
     test would fail with "iris_classifier" missing from ml_models.
+
+    Sends a valid X-API-Key header by default (Task 17), so every
+    existing test that doesn't care about auth keeps working
+    unmodified. Tests that specifically exercise auth failure paths
+    override this with headers={} or an invalid key.
     """
     with TestClient(app) as c:
+        c.headers.update({"X-API-Key": settings.API_KEY})
         yield c
 
 
@@ -37,3 +44,4 @@ def batch_input(valid_input):
             {"sepal_length": 6.7, "sepal_width": 3.1, "petal_length": 4.7, "petal_width": 1.5},
         ]
     }
+

@@ -22,13 +22,27 @@ pip install -r requirements.txt
 
 copy .env.example .env       # Windows
 # cp .env.example .env       # macOS/Linux
+```
 
+Open `.env` and set `API_KEY` — this isn't a value you look up anywhere,
+it's a secret you choose yourself. Any non-empty string works, but a
+random one is safer than something guessable:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(16))"
+```
+
+Paste the output as your `API_KEY` in `.env`. Every request except
+`/health` will require this exact value, sent back in an `X-API-Key`
+header (see **Authentication** below).
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-Open **http://127.0.0.1:8000/docs** for interactive API docs.
-Run tests with `pytest -v`.
-
+Open **http://127.0.0.1:8000/docs** for interactive API docs. Click
+**Authorize** (top right) and enter your `API_KEY` to try endpoints
+directly from the browser. Run tests with `pytest -v`.
 ## Running with Docker Compose
 
 Single command starts the full stack — no local Python environment,
@@ -75,6 +89,8 @@ cloud deployment has no shared host filesystem to mount — it would pull
 the model from object storage, e.g. S3, at container startup instead.)
 
 ## API Contract
+
+All endpoints below require the `X-API-Key` header (see **Authentication**), except `/api/v1/health`.
 
 Two API versions run side by side. v1's contract is frozen; v2 adds a
 deliberate breaking change (a full probability breakdown) without
@@ -149,6 +165,34 @@ training script — never hardcoded): `model_type`, `model_version`,
 
 Returns `{"status": "ok", "model_loaded": true}` (or `"degraded"` / `false`).
 
+## Authentication
+
+Every endpoint except `/api/v1/health` requires an `X-API-Key` header
+matching the configured `API_KEY`. Health checks are left open
+deliberately — infrastructure tooling (load balancers, uptime monitors)
+needs to reach them without holding a secret.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/predict \
+  -H "X-API-Key: your-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'
+```
+
+- **401** — missing or incorrect key. Comparison is constant-time
+  (`secrets.compare_digest`) to avoid leaking timing information about
+  a partially-correct key.
+- Failed attempts are logged (with `request_id`) but never log the
+  submitted key itself.
+
+## CORS
+
+Only origins listed in `ALLOWED_ORIGINS` (comma-separated in `.env`) can
+call this API from browser JavaScript. Not left wildcarded — an
+explicit allowlist is required, since `allow_credentials=True` combined
+with a wildcard origin is both a real security risk and something
+browsers reject outright.
+
 ## Configuration
 
 Twelve-factor style: environment-specific values live in `.env`
@@ -163,6 +207,8 @@ even with no `.env` present.
 | `LOG_LEVEL` | `INFO` | Minimum log level |
 | `MAX_BATCH_SIZE` | `100` | Max items per `/predict-batch` call |
 | `API_TITLE` | `Iris Flower Classification API` | Shown in `/docs` and `/` |
+| `API_KEY` | *(placeholder)* | Required for all endpoints except `/health` |
+| `ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated list of origins allowed by CORS |
 
 ## Engineering Notes
 
@@ -171,11 +217,13 @@ even with no `.env` present.
 - **Error handling** — `ValueError` → 400, anything else → 500, consistently across every endpoint, both versions. Client sees a safe generic message; the real error is logged server-side only.
 - **Tracing** — one `request_id` per request, generated once in middleware, flowing through the log line, response body, and `X-Request-ID` header.
 - **Logging** — console + rotating file (`logs/app.log`, ~1MB, 3 backups). DEBUG (raw features), INFO (requests/success), WARNING (>200ms), ERROR (failures).
+- - **Startup failure handling** — model/config loading in the `lifespan` function is wrapped in a try/except that logs the real error to `logs/app.log` before re-raising, so a bad `MODEL_PATH` or corrupted model file leaves a traceable record instead of only a console message that disappears when the terminal closes.
 - **API versioning** — `app/routers/v1.py` and `v2.py`, each their own `APIRouter`, both included into `app` in `main.py`. v2 imports and reuses v1's inference helpers directly rather than duplicating them — the only genuinely new code per version is its own schema and route logic. Proven independent with tests that construct v1's schema with v2-shaped data and confirm it's rejected, not silently accepted.
 - **Batch efficiency** — every predict/predict-batch route (both versions) shares one inference helper that calls `model.predict()`/`predict_proba()` exactly once per request, on the whole array.
 - **Configuration** — centralized in `app/config.py` via `pydantic-settings`. The batch size limit is enforced through a `field_validator` that reads the setting at *request time*, so it's genuinely reconfigurable without restarting the app.
-- **Containerization** — single-stage `python:3.11-slim` build, layered so `requirements.txt` installs in its own cached layer separate from app code, keeping rebuilds fast. `.dockerignore` excludes `venv/`, `.env`, `logs/`, and test artifacts from the image. 
-- **Testing** — 59 pytest cases across validation, response shape, both error paths, logging, batch prediction, model metadata, and cross-version isolation (v1/v2 run side by side, each independently and jointly verified).
+- **Containerization** — single-stage `python:3.11-slim` build, layered so `requirements.txt` installs in its own cached layer separate from app code, keeping rebuilds fast. `.dockerignore` excludes `venv/`, `.env`, `logs/`, and test artifacts from the image.
+- - **Authentication & CORS** — every route except `/health` requires `X-API-Key`, checked via a FastAPI `Security` dependency applied at the router level (not per-endpoint, so nothing new can accidentally ship unprotected). CORS origins are explicitly allowlisted via `ALLOWED_ORIGINS`, never wildcarded. 
+- - **Testing** — 65 pytest cases across validation, response shape, both error paths, logging, batch prediction, model metadata, cross-version isolation, and authentication/authorization edge cases.
 
 ## Technology Stack
 
@@ -215,7 +263,7 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 ### Phase 4 — Production Readiness
 - [x] Docker
 - [x] Docker Compose
-- [ ] API-key security & CORS configuration
+- [x] API-key security & CORS configuration
 
 ### Phase 5 — Monitoring & Deployment
 - [ ] Prometheus metrics (`/metrics`)

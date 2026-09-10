@@ -17,16 +17,19 @@ from app.routers.v2 import router as v2_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: runs once when the app boots
-    ml_models["iris_classifier"] = joblib.load(settings.MODEL_PATH)
-    logger.info("Model loaded successfully at startup")
- 
-    with open(settings.MODEL_INFO_PATH) as f:
-        ml_models["model_info"] = json.load(f)
-    logger.info("Model info loaded successfully at startup")
- 
+    try:
+        ml_models["iris_classifier"] = joblib.load(settings.MODEL_PATH)
+        logger.info("Model loaded successfully at startup")
+
+        with open(settings.MODEL_INFO_PATH) as f:
+            ml_models["model_info"] = json.load(f)
+        logger.info("Model info loaded successfully at startup")
+    except Exception as exc:
+        logger.error(f"Startup failed: could not load model or model info: {exc}")
+        raise
+
     yield
-    # Shutdown: runs once when the app stops (cleanup if needed)
+
     ml_models.clear()
     logger.info("Model cleared on shutdown")
  

@@ -24,8 +24,17 @@ copy .env.example .env       # Windows
 # cp .env.example .env       # macOS/Linux
 ```
 
-Open `.env` and set `API_KEY` to any value of your choice — every request
-except `/health` requires it (see **Authentication** below).
+Open `.env` and set `API_KEY` — this isn't a value you look up anywhere,
+it's a secret you choose yourself. Any non-empty string works, but a
+random one is safer than something guessable:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(16))"
+```
+
+Paste the output as your `API_KEY` in `.env`. Every request except
+`/health` will require this exact value, sent back in an `X-API-Key`
+header (see **Authentication** below).
 
 ```bash
 uvicorn app.main:app --reload
@@ -34,7 +43,6 @@ uvicorn app.main:app --reload
 Open **http://127.0.0.1:8000/docs** for interactive API docs. Click
 **Authorize** (top right) and enter your `API_KEY` to try endpoints
 directly from the browser. Run tests with `pytest -v`.
-
 ## Running with Docker Compose
 
 Single command starts the full stack — no local Python environment,

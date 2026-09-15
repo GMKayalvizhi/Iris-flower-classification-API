@@ -1,0 +1,12 @@
+groups:
+  - name: iris-model-health
+    rules:
+      - alert: HighPredictionUncertainty
+        expr: |
+          (rate(iris_prediction_entropy_bits_sum[15m]) / rate(iris_prediction_entropy_bits_count[15m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Iris model average prediction entropy is high"
+          description: "Sustained average entropy > 1.0 bits over 15m — possible distribution shift."

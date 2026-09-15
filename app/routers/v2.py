@@ -13,9 +13,11 @@ from app.models.schemas import (
 from app.logging_config import logger
 from app.state import ml_models
 from app.security import verify_api_key
+from app.metrics import PREDICTION_ENTROPY_BITS
 from fastapi import Depends
 
 from app.routers.v1 import _run_inference, _to_feature_array, _get_model_version
+
 
 router = APIRouter(
     prefix="/api/v2",
@@ -43,6 +45,8 @@ def predict_v2(input_data: IrisInput, request: Request):
         logger.debug(f"request_id={request_id} raw features array: {features.tolist()}")
 
         result = result = result = _run_inference(model, features)[0]
+
+        PREDICTION_ENTROPY_BITS.labels(api_version="v2").observe(result["entropy_bits"])
 
         logger.info(
             f"request_id={request_id} prediction={result['species']} "
@@ -95,6 +99,10 @@ def predict_batch_v2(batch_input: PredictionBatchInput, request: Request):
             )
             for result in results
         ]
+
+        for result in results:
+            PREDICTION_ENTROPY_BITS.labels(api_version="v2").observe(result["entropy_bits"])
+
  
 
         duration_ms = round((time.time() - start_time) * 1000, 2)

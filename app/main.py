@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import joblib
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
 from app.logging_config import logger
@@ -71,6 +72,12 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["X-API-Key", "Content-Type"],
 )
+
+# Registers the instrumentator's own middleware (must run before the
+# routers are mounted so it sees every request) and exposes GET /metrics.
+# /metrics is intentionally unauthenticated -- same reasoning as /health:
+# infrastructure (Prometheus itself) needs to scrape it without a key.
+Instrumentator().instrument(app).expose(app)
 
 
 @app.middleware("http")

@@ -6,6 +6,8 @@
 # "what v1 does", and the prefix is wired in exactly once, in main.py.
 
 import time
+import math
+
 
 from fastapi import APIRouter, HTTPException, Request
 import numpy as np
@@ -21,6 +23,7 @@ from app.models.schemas import (
 from app.logging_config import logger
 from app.state import ml_models
 from app.security import verify_api_key
+from app.metrics import PREDICTION_ENTROPY_BITS
 from fastapi import Depends
 
 router = APIRouter(
@@ -82,10 +85,16 @@ def _run_inference(model, features: np.ndarray):
         probability_breakdown = {
             SPECIES_MAP[i]: float(p) for i, p in enumerate(probs)
         }
+        # Shannon entropy in bits. Skipping p == 0 is exact, not an
+        # approximation -- log2(0) is undefined, but a zero-probability
+        # class's true contribution to entropy is 0 in the limit anyway.
+        entropy_bits = -sum(p * math.log2(p) for p in probs if p > 0)
+
         results.append({
             "species": species_name,
             "confidence": confidence,
             "probabilities": probability_breakdown,
+            "entropy_bits": entropy_bits,
         })
     return results
  
@@ -154,6 +163,9 @@ def predict(input_data: IrisInput, request: Request):
         species_name = result["species"]
         confidence = result["confidence"]
 
+        PREDICTION_ENTROPY_BITS.labels(api_version="v1").observe(result["entropy_bits"])
+
+
         logger.info(
             f"request_id={request_id} prediction={species_name} "
             f"confidence={confidence:.4f}"
@@ -196,6 +208,10 @@ def predict_batch(batch_input: PredictionBatchInput, request: Request):
             )     
             for result in results
         ]
+
+        for result in results:
+            PREDICTION_ENTROPY_BITS.labels(api_version="v1").observe(result["entropy_bits"])
+
 
         duration_ms = round((time.time() - start_time) * 1000, 2)
         if duration_ms > 200:

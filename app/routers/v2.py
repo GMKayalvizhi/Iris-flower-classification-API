@@ -1,7 +1,6 @@
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-import numpy as np
 
 from app.models.schemas import (
     IrisInput,
@@ -13,10 +12,9 @@ from app.models.schemas import (
 from app.logging_config import logger
 from app.state import ml_models
 from app.security import verify_api_key
+from app.inference import run_inference, to_feature_array, get_model_version
 from app.metrics import PREDICTION_ENTROPY_BITS
 from fastapi import Depends
-
-from app.routers.v1 import _run_inference, _to_feature_array, _get_model_version
 
 
 router = APIRouter(
@@ -40,24 +38,24 @@ def predict_v2(input_data: IrisInput, request: Request):
 
     try:
         model = ml_models["iris_classifier"]
-        features = _to_feature_array([input_data])
+        features = to_feature_array([input_data])
 
         logger.debug(f"request_id={request_id} raw features array: {features.tolist()}")
 
-        result = result = result = _run_inference(model, features)[0]
+        result = run_inference(model, features)[0]
 
         PREDICTION_ENTROPY_BITS.labels(api_version="v2").observe(result["entropy_bits"])
 
         logger.info(
             f"request_id={request_id} prediction={result['species']} "
-            f"confidence={result['confidence']:.4f} api_version = v2"
+            f"confidence={result['confidence']:.4f} api_version=v2"
         )
 
         return PredictionOutputV2(
             prediction=result["species"],
             confidence=result["confidence"],
             probabilities=result["probabilities"],
-            model_version=_get_model_version(),
+            model_version=get_model_version(),
             request_id=request_id,
         )
 
@@ -84,12 +82,12 @@ def predict_batch_v2(batch_input: PredictionBatchInput, request: Request):
 
     try:
         model = ml_models["iris_classifier"]
-        features = _to_feature_array(batch_input.inputs)
+        features = to_feature_array(batch_input.inputs)
 
         logger.debug(f"request_id={request_id} batch raw features shape: {features.shape}")
 
-        results = _run_inference(model, features)
-        model_version = _get_model_version()
+        results = run_inference(model, features)
+        model_version = get_model_version()
 
         predictions = [
             PredictionItemV2(
@@ -109,11 +107,11 @@ def predict_batch_v2(batch_input: PredictionBatchInput, request: Request):
         if duration_ms > 200:
             logger.warning(
                 f"request_id={request_id} slow batch prediction: "
-                f"batch_size={batch_size} duration_ms={duration_ms} api_version = v2"
+                f"batch_size={batch_size} duration_ms={duration_ms} api_version=v2"
             )
         logger.info(
             f"request_id={request_id} batch_size={batch_size} "
-            f"batch_prediction_duration_ms={duration_ms} api_version = v2"
+            f"batch_prediction_duration_ms={duration_ms} api_version=v2"
         )
 
         return PredictionBatchOutputV2(

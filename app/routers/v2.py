@@ -104,7 +104,7 @@ def predict_batch_v2(batch_input: PredictionBatchInput, request: Request):
  
 
         duration_ms = round((time.time() - start_time) * 1000, 2)
-        if duration_ms > 200:
+        if duration_ms > 1200:
             logger.warning(
                 f"request_id={request_id} slow batch prediction: "
                 f"batch_size={batch_size} duration_ms={duration_ms} api_version=v2"

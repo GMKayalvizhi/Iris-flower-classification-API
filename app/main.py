@@ -104,7 +104,12 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     duration_ms = round((time.time() - start_time) * 1000, 2)
 
-    if duration_ms > 200:
+    # 1000ms threshold, derived from load-test p95/p99 data (Task 19)
+    # under 100 concurrent users with the fixed worker/thread config --
+    # see TESTING.md. Catches genuinely anomalous slowness (the old
+    # threshold-breaking regression hit 3000-10000ms) without firing on
+    # routine variance under normal concurrent load 
+    if duration_ms > 1000:
         logger.warning(f"request_id={request_id} slow request: {duration_ms}ms")
 
     logger.info(

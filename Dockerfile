@@ -24,4 +24,10 @@ EXPOSE 8000
 # never reaches it and you get connection-refused even though the container is
 # running fine. 0.0.0.0 means "listen on all interfaces inside this container,"
 # which includes the one Docker's port-forwarding actually uses.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+ENV OMP_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV NUMEXPR_NUM_THREADS=1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "8"]

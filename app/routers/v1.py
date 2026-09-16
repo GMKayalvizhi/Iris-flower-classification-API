@@ -74,7 +74,6 @@ def predict(input_data: IrisInput, request: Request):
 
         PREDICTION_ENTROPY_BITS.labels(api_version="v1").observe(result["entropy_bits"])
 
-
         logger.info(
             f"request_id={request_id} prediction={species_name} "
             f"confidence={confidence:.4f}"
@@ -93,7 +92,6 @@ def predict(input_data: IrisInput, request: Request):
         logger.error(f"request_id={request_id} Unexpected error: {e}")
         raise HTTPException(status_code=500,
                             detail={"message": "Prediction failed", "request_id": request_id})
-
 
 @router.post("/predict-batch", response_model=PredictionBatchOutput)
 def predict_batch(batch_input: PredictionBatchInput, request: Request):
@@ -123,7 +121,11 @@ def predict_batch(batch_input: PredictionBatchInput, request: Request):
 
 
         duration_ms = round((time.time() - start_time) * 1000, 2)
-        if duration_ms > 200:
+        # 1200ms threshold, derived from load-test p95/p98 data (Task 19) for
+        # predict-batch under 100 concurrent users -- slightly higher than the
+        # 1000ms general request threshold since batch calls do proportionally
+        # more inference work per request. See TESTING.md.
+        if duration_ms > 1200:
             logger.warning(
                 f"request_id={request_id} slow batch prediction: "
                 f"batch_size={batch_size} duration_ms={duration_ms}"

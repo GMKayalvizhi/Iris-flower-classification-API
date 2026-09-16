@@ -8,6 +8,7 @@ httptools==0.8.0
 httpx2==2.12.0
 idna==3.18
 joblib==1.5.3
+locust==2.46.5
 narwhals==2.24.0
 numpy==2.4.6
 pandas==3.0.5

@@ -1,6 +1,8 @@
 services:
   api:
     build: .
+    environment:
+      - WORKERS=8
     image: ml-api:v1
     ports:
       - "8000:8000"

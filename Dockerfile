@@ -29,5 +29,6 @@ ENV OMP_NUM_THREADS=1
 ENV OPENBLAS_NUM_THREADS=1
 ENV MKL_NUM_THREADS=1
 ENV NUMEXPR_NUM_THREADS=1
+ENV WORKERS=1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "8"]
+CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WORKERS}

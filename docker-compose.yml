@@ -22,5 +22,15 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
       - ./prometheus_api_key.txt:/etc/prometheus/api_key:ro
+    
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
-      - api    
+      - prometheus     

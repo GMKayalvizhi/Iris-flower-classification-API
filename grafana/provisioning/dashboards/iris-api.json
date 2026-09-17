@@ -1,0 +1,51 @@
+{
+  "title": "Iris API — Monitoring",
+  "uid": "iris-api-dashboard",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[5m])) by (handler)", "legendFormat": "{{handler}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latency p95 (seconds)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))", "legendFormat": "{{handler}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Prediction Entropy p95 (bits)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(iris_prediction_entropy_bits_bucket[5m])) by (le, api_version))", "legendFormat": "{{api_version}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Error Rate (4xx/5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{status=~\"4xx|5xx\"}[5m])) by (handler, status)", "legendFormat": "{{handler}} {{status}}", "refId": "A" }
+      ]
+    }
+  ]
+}

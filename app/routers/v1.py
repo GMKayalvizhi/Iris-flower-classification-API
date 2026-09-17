@@ -6,7 +6,6 @@
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-import numpy as np
 
 from app.models.schemas import (
     IrisInput,

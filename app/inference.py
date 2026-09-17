@@ -1,9 +1,7 @@
-import time
 import math
 import numpy as np
 from app.state import ml_models
 from app.models.schemas import IrisInput
-from app.logging_config import logger
 
 SPECIES_MAP = {
     0: "setosa",
@@ -51,16 +49,12 @@ def run_inference(model, features: np.ndarray):
     # predict() is redundant here -- the winning class is always
     # argmax(probabilities), so deriving it from predict_proba()'s
     # output avoids running the whole Random Forest a second time.
-    # This was confirmed by profiling: predict_time_ms and
-    # predict_proba_time_ms were both individually significant under
-    # load, so removing one halves the actual inference work per request.
-    start = time.perf_counter()
+    # (Confirmed by profiling during Task 11 -- predict_proba() alone
+    # was already a significant share of request latency, so skipping
+    # the separate predict() call roughly halves the inference work
+    # per request.)
     probabilities_matrix = model.predict_proba(features)
-    predict_proba_time_ms = (time.perf_counter() - start) * 1000
     predictions = probabilities_matrix.argmax(axis=1)
-
-    logger.info(f"predict_proba_time_ms={predict_proba_time_ms:.2f}")
-
 
     results = []
     for pred, probs in zip(predictions, probabilities_matrix):

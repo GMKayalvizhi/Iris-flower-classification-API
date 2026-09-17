@@ -14,8 +14,11 @@ services:
     image: prom/prometheus:latest
     ports:
       - "9090:9090"
+    env_file:
+      - .env  
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - ./prometheus_api_key.txt:/etc/prometheus/api_key:ro
     depends_on:
       - api    

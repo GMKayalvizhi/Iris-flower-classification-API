@@ -13,7 +13,7 @@ import json
 import time
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 import joblib
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +25,10 @@ from app.state import ml_models
 from app.routers.v1 import router as v1_router
 from app.routers.v1 import health_router as v1_health_router
 from app.routers.v2 import router as v2_router
+
+from starlette.responses import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from app.security import verify_api_key
 
 
 @asynccontextmanager
@@ -74,10 +78,11 @@ app.add_middleware(
 )
 
 # Registers the instrumentator's own middleware (must run before the
-# routers are mounted so it sees every request) and exposes GET /metrics.
-# /metrics is intentionally unauthenticated -- same reasoning as /health:
-# infrastructure (Prometheus itself) needs to scrape it without a key.
-Instrumentator().instrument(app).expose(app)
+# routers are mounted so it sees every request). GET /metrics is exposed
+# below as a protected route -- unlike /health, it carries operational
+# data (request patterns, latency, model uncertainty), so it requires
+# the same X-API-Key as everything else.
+Instrumentator().instrument(app)
 
 
 @app.middleware("http")
@@ -126,6 +131,10 @@ async def log_requests(request: Request, call_next):
 @app.get("/")
 def root():
     return {"message": f"{settings.API_TITLE} is running"}
+
+@app.get("/metrics", dependencies=[Depends(verify_api_key)])
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.exception_handler(ValueError)

@@ -11,3 +11,4 @@ logs/
 tests/
 .vscode/
 .idea/
+prometheus_api_key.txt

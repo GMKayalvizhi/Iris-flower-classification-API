@@ -66,7 +66,7 @@ def test_internal_failure_returns_500_with_safe_message(client, valid_input, mon
 
     from app.state import ml_models
     original_model = ml_models["iris_classifier"]
-    monkeypatch.setattr(original_model, "predict", broken_predict)
+    monkeypatch.setattr(original_model, "predict_proba", broken_predict)
 
     response = client.post("/api/v1/predict", json=valid_input)
     assert response.status_code == 500
@@ -81,7 +81,7 @@ def test_value_error_returns_400_with_safe_message(client, valid_input, monkeypa
 
     from app.state import ml_models
     original_model = ml_models["iris_classifier"]
-    monkeypatch.setattr(original_model, "predict", broken_predict)
+    monkeypatch.setattr(original_model, "predict_proba", broken_predict)
 
     response = client.post("/api/v1/predict", json=valid_input)
     assert response.status_code == 400
@@ -118,7 +118,7 @@ def test_value_error_logs_at_error_level(client, valid_input, monkeypatch, caplo
 
     from app.state import ml_models
     original_model = ml_models["iris_classifier"]
-    monkeypatch.setattr(original_model, "predict", broken_predict)
+    monkeypatch.setattr(original_model, "predict_proba", broken_predict)
 
     with caplog.at_level("ERROR"):
         response = client.post("/api/v1/predict", json=valid_input)
@@ -135,7 +135,7 @@ def test_internal_failure_logs_at_error_level(client, valid_input, monkeypatch, 
 
     from app.state import ml_models
     original_model = ml_models["iris_classifier"]
-    monkeypatch.setattr(original_model, "predict", broken_predict)
+    monkeypatch.setattr(original_model, "predict_proba", broken_predict)
 
     with caplog.at_level("ERROR"):
         response = client.post("/api/v1/predict", json=valid_input)

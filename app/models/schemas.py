@@ -52,7 +52,7 @@ class PredictionOutput(BaseModel):
     prediction: str = Field(..., description="Predicted Iris species name")
     confidence: float = Field(..., description="Model's confidence in the prediction (0–1)")
     model_version: str = Field(..., description="Version identifier of the model that served this prediction")
-    request_id: str = Field(..., description="Unique identifier for this request (placeholder until Task 9)")
+    request_id: str = Field(..., description="Unique identifier for this request")
 
 
     model_config = {

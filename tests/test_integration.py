@@ -36,6 +36,6 @@ def test_predict_without_key_rejected():
 
 
 def test_metrics_reachable_and_contains_entropy_metric():
-    response = httpx.get(f"{BASE_URL}/metrics")
+    response = httpx.get(f"{BASE_URL}/metrics", headers=HEADERS)
     assert response.status_code == 200
     assert "iris_prediction_entropy_bits" in response.text

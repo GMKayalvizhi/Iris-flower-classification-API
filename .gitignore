@@ -13,6 +13,7 @@ __pycache__/
 
 # Environment variables / secrets
 .env
+prometheus_api_key.txt
 
 # ML model artifacts (large binaries - decide per-project if you want these tracked)
 # Uncomment if you don't want to commit trained models to git:

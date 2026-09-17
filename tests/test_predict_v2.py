@@ -62,7 +62,7 @@ def test_v2_internal_failure_returns_500_with_safe_message(client, valid_input, 
 
     from app.state import ml_models
     original_model = ml_models["iris_classifier"]
-    monkeypatch.setattr(original_model, "predict", broken_predict)
+    monkeypatch.setattr(original_model, "predict_proba", broken_predict)
 
     response = client.post("/api/v2/predict", json=valid_input)
     assert response.status_code == 500

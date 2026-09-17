@@ -22,10 +22,9 @@ def test_metrics_endpoint_returns_prometheus_text(client):
     assert "text/plain" in response.headers["content-type"]
 
 
-def test_metrics_endpoint_does_not_require_api_key(client):
-    response = client.get("/metrics", headers={})
-    assert response.status_code == 200
-
+def test_metrics_endpoint_requires_api_key(client):
+    response = client.get("/metrics", headers={"X-API-Key": ""})
+    assert response.status_code == 401
 
 def test_successful_prediction_records_entropy_observation(client, valid_input):
     count_before, _ = _entropy_count_and_sum("v1")

@@ -317,7 +317,7 @@ Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-
 
 ### Phase 5 — Monitoring & Deployment
 - [x] Prometheus metrics (`/metrics`)
-- [ ] Load testing
+- [x] Load testing
 - [ ] Cloud deployment
 - [ ] Final documentation
 

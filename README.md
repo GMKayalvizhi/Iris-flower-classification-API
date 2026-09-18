@@ -101,14 +101,23 @@ Open **http://127.0.0.1:8000/docs** — click **Authorize**, paste your
 ### Option B — Full stack: API + Prometheus + Grafana together
 
 Requires Docker Desktop.
-
+ 
 ```bash
-copy .env.example .env
-copy prometheus_api_key_example.txt prometheus_api_key.txt
+copy .env.example .env        # Windows
+# cp .env.example .env        # macOS/Linux
 ```
-Fill in your real `API_KEY` in both files (same value in both —
-`prometheus_api_key.txt` is what lets Prometheus authenticate against the
-protected `/metrics` endpoint).
+Set your real `API_KEY` in `.env`.
+ 
+Create your own `prometheus_api_key.txt` from the example file, then
+edit it to contain only your real key (no comments, no quotes):
+```bash
+copy prometheus_api_key_example.txt prometheus_api_key.txt   # Windows
+# cp prometheus_api_key_example.txt prometheus_api_key.txt  # macOS/Linux
+```
+`prometheus_api_key.txt` is git-ignored — you're creating it locally,
+it's never committed. Use the **same** key value as `.env`, since this
+is what lets Prometheus authenticate against the protected `/metrics`
+endpoint.
 
 ```bash
 docker compose up --build

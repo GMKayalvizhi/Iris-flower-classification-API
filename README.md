@@ -49,7 +49,8 @@ monitoring, load testing, and deployment — rather than model complexity.
 
 ## Deployment
 
-**Live API:** https://iris-flower-classification-api-gf1c.onrender.com
+**Live API:** https://iris-flower-classification-api-gf1c.onrender.com\docs
+
 Deployed as a standalone Docker container on **Render** (free tier). The
 service spins down after 15 minutes of inactivity — the first request
 after a quiet period may take up to a minute to wake it up; every
@@ -115,7 +116,9 @@ docker compose up --build
 
 - **API:** http://localhost:8000/docs
 - **Prometheus:** http://localhost:9090 (Status → Targets should show `iris-api` as `UP`)
-- **Grafana:** http://localhost:3000 (login: `admin` / `admin`) — dashboard loads automatically
+- **Grafana:** http://localhost:3000 — dashboard loads automatically
+  - Username: `admin`
+  - Password: `admin`
 
 **To stop:** `docker compose down`
 

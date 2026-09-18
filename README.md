@@ -15,7 +15,7 @@ monitoring, load testing, and deployment — rather than model complexity.
 
 ```
                          ┌──────────────────────────────────────┐
-  curl / Postman / ────► │ FastAPI (Uvicorn)                   │
+  curl / Postman / ────► │ FastAPI (Uvicorn)                    │
   frontend / browser     │ request_id middleware                │
                          │ CORS                                 │
                          │ Pydantic validation                  │
@@ -34,14 +34,14 @@ monitoring, load testing, and deployment — rather than model complexity.
                                                          │
                                                          ▼
                                       ┌──────────────────────────────┐
-                                      │ Prometheus (local)            │
-                                      │ scrapes /metrics every 5s     │
+                                      │ Prometheus (local)           │
+                                      │ scrapes /metrics every 5s    │
                                       └──────────────┬───────────────┘
                                                      │
                                                      ▼
                                       ┌──────────────────────────────┐
-                                      │ Grafana (local)               │
-                                      │ auto-provisioned dashboard    │
+                                      │ Grafana (local)              │
+                                      │ auto-provisioned dashboard   │
                                       └──────────────────────────────┘
 ```
 

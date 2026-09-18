@@ -1,14 +1,75 @@
 # Iris Flower Classification API
 
-A REST API that predicts Iris flower species from sepal/petal measurements,
-built to demonstrate production API engineering — validation, error
-handling, structured logging, versioning, and configuration management and monitoring —
-rather than model complexity.
+## Description
 
-- **Model:** Random Forest Classifier (scikit-learn) — Setosa / Versicolor / Virginica
-- **Stack:** FastAPI, Pydantic, pydantic-settings, Uvicorn, joblib, pytest, Prometheus
+A REST API that predicts Iris flower species (Setosa, Versicolor,
+Virginica) from sepal/petal measurements. Built to demonstrate
+production API engineering — validation, error handling, structured
+logging, versioning, configuration management, containerization,
+monitoring, load testing, and deployment — rather than model complexity.
 
-## Getting Started
+- **Model:** Random Forest Classifier (scikit-learn)
+- **Stack:** FastAPI, Pydantic, Uvicorn, Docker, Prometheus, Grafana, pytest
+
+## Architecture
+
+```
+                         ┌─────────────────────────┐
+  curl / Postman /  ───► │   FastAPI (Uvicorn)      │
+  frontend / browser     │   - request_id middleware │
+                         │   - CORS                  │
+                         │   - Pydantic validation    │
+                         └────────────┬──────────────┘
+                                      │
+                         ┌────────────▼──────────────┐
+                         │   app/inference.py          │
+                         │   model.predict_proba()      │
+                         │   (loaded once at startup)    │
+                         └────────────┬──────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    ▼                 ▼                 ▼
+              JSON response    Structured logs    Prometheus metrics
+              to client        (console + file)   (/metrics, key-protected)
+                                                          │
+                                                          ▼
+                                            ┌──────────────────────────┐
+                                            │  Prometheus (local)        │
+                                            │  scrapes /metrics every 5s  │
+                                            └────────────┬────────────┘
+                                                          │
+                                                          ▼
+                                            ┌──────────────────────────┐
+                                            │  Grafana (local)           │
+                                            │  dashboard, auto-provisioned │
+                                            └──────────────────────────┘
+```
+
+---
+
+## Deployment
+
+**Live API:** https://iris-flower-classification-api-gf1c.onrender.com
+Deployed as a standalone Docker container on **Render** (free tier). The
+service spins down after 15 minutes of inactivity — the first request
+after a quiet period may take up to a minute to wake it up; every
+request after that is fast.
+
+Prometheus and Grafana are not deployed publicly — they run locally via
+`docker compose up`, alongside a **local** copy of the API (Option B
+below), not the live Render deployment. This is deliberate: Render's
+free tier has an ephemeral filesystem, so file-based logs
+(`logs/app.log`) written there are lost on every restart and can't be
+inspected. Running the full stack locally keeps logs on disk and makes
+the whole request → log → metric → dashboard flow fully inspectable in
+one place, while the deployed API stays a small, reliably free,
+standalone service.
+
+---
+
+## Setup
+
+### Option A — API only (fastest way to try it locally)
 
 ```bash
 git clone https://github.com/GMKayalvizhi/Iris-flower-classification-API.git
@@ -24,110 +85,74 @@ copy .env.example .env       # Windows
 # cp .env.example .env       # macOS/Linux
 ```
 
-Open `.env` and set `API_KEY` — this isn't a value you look up anywhere,
-it's a secret you choose yourself. Any non-empty string works, but a
-random one is safer than something guessable:
-
+Open `.env` and set `API_KEY` to any value you choose:
 ```bash
 python -c "import secrets; print(secrets.token_hex(16))"
 ```
-
-Paste the output as your `API_KEY` in `.env`. Every request except
-`/health` will require this exact value, sent back in an `X-API-Key`
-header (see **Authentication** below).
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Open **http://127.0.0.1:8000/docs** for interactive API docs. Click
-**Authorize** (top right) and enter your `API_KEY` to try endpoints
-directly from the browser. Run tests with `pytest -v`.
-## Running with Docker Compose
+Open **http://127.0.0.1:8000/docs** — click **Authorize**, paste your
+`API_KEY`, and try every endpoint from the browser. Run tests: `pytest -v`
 
-Single command starts the full stack — no local Python environment,
-no manual `docker build` / `docker run` steps required.
+### Option B — Full stack: API + Prometheus + Grafana together
 
-**First run, or after any code/dependency/Dockerfile change:**
+Requires Docker Desktop.
+
+```bash
+copy .env.example .env
+copy prometheus_api_key_example.txt prometheus_api_key.txt
+```
+Fill in your real `API_KEY` in both files (same value in both —
+`prometheus_api_key.txt` is what lets Prometheus authenticate against the
+protected `/metrics` endpoint).
 
 ```bash
 docker compose up --build
 ```
 
-**Subsequent runs, if nothing has changed since the last build:**
+- **API:** http://localhost:8000/docs
+- **Prometheus:** http://localhost:9090 (Status → Targets should show `iris-api` as `UP`)
+- **Grafana:** http://localhost:3000 (login: `admin` / `admin`) — dashboard loads automatically
 
+**To stop:** `docker compose down`
+
+---
+
+## API Reference — Example Requests for Every Endpoint
+
+All endpoints require an `X-API-Key` header except `/api/v1/health`.
+Examples use the live deployed URL — swap in `http://localhost:8000` to run locally.
+
+### `GET /api/v1/health` — no key required
 ```bash
-docker compose up
+curl https://iris-flower-classification-api-gf1c.onrender.com/api/v1/health
+```
+```json
+{"status": "ok", "model_loaded": true}
 ```
 
-`--build` forces Compose to rebuild the `api` image before starting;
-without it, Compose reuses the existing image as-is, which is faster but
-will silently run stale code if something was edited and not rebuilt.
-(Prometheus has no `build:` step — it always pulls `prom/prometheus:latest`
-regardless of `--build`.) When in doubt, use `--build` — it costs a few
-extra seconds, not correctness.
-
-Open **http://localhost:8000/docs** for the API, and
-**http://localhost:9090** for Prometheus's own UI once it's running —
-check **Status → Targets** there to confirm it's scraping `iris-api`
-successfully, and **Alerts** to see the configured uncertainty alert.
-
-**To stop:**
-
+### `POST /api/v1/predict`
 ```bash
-docker compose down
+curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v1/predict \
+  -H "X-API-Key: your-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'
 ```
-
-This stops and removes the container *and* the network Compose created
-for it — a full teardown, safely repeatable any time.
-
-The `ml/saved_model/` and `logs/` folders are bind-mounted from the host
-into the container, so:
-- A retrained model (`ml/saved_model/model.joblib`) is picked up on the
-  next container restart — no image rebuild needed.
-- Log entries written by the app land directly in `logs/app.log` on the
-  host, and survive even after `docker compose down` removes the
-  container.
-
-`prometheus.yml` and `alert_rules.yml` are bind-mounted into the
-`prometheus` container the same way — editing either on the host and
-restarting Prometheus (`docker compose restart prometheus`) picks up the
-change with no rebuild, since Prometheus reads its config fresh at
-startup rather than baking it into an image.  
-
-(This bind-mount approach is a local-development convenience. A real
-cloud deployment has no shared host filesystem to mount — it would pull
-the model from object storage, e.g. S3, at container startup instead, and
-Prometheus would typically run as a separately managed service.)
-
-## API Contract
-
-All endpoints below require the `X-API-Key` header (see **Authentication**), except `/api/v1/health`.
-
-Two API versions run side by side. v1's contract is frozen; v2 adds a
-deliberate breaking change (a full probability breakdown) without
-touching v1 at all — proven by tests in `tests/test_versioning.py` that
-call both versions with the same input and assert v1's shape never changed.
-
-### `POST /api/v1/predict` · `POST /api/v2/predict`
-
 ```json
-// Request (same for both versions)
-{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}
-```
-
-| Feature | Min | Max |
-|---|---|---|
-| sepal_length | 4.3 | 7.9 |
-| sepal_width | 2.0 | 4.4 |
-| petal_length | 1.0 | 6.9 |
-| petal_width | 0.1 | 2.5 |
-
-```json
-// v1 — 200 response
 {"prediction": "setosa", "confidence": 1.0, "model_version": "1.0.0", "request_id": "eae99247-..."}
+```
 
-// v2 — 200 response (breaking change: adds full probability breakdown)
+### `POST /api/v2/predict` — adds a full probability breakdown
+```bash
+curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v2/predict \
+  -H "X-API-Key: your-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'
+```
+```json
 {
   "prediction": "setosa",
   "confidence": 1.0,
@@ -137,115 +162,144 @@ call both versions with the same input and assert v1's shape never changed.
 }
 ```
 
-- **422** — Pydantic validation error, naming the exact field/rule/value (same rules, both versions).
-- **400 / 500** — a `ValueError` (bad shape reaching the model) returns 400; anything else returns 500. Both include `request_id`; neither exposes internals.
-
 ### `POST /api/v1/predict-batch` · `POST /api/v2/predict-batch`
-
-Accepts 1–`MAX_BATCH_SIZE` inputs (default 100). Runs inference once on
-the whole batch (vectorized), never in a per-row loop. `model_version`
-and `request_id` live once at the batch level, not repeated per item —
-every item in one call shares the same request and the same loaded model.
-
-```json
-// v1 — 200 response
-{
-  "predictions": [{"prediction": "setosa", "confidence": 1.0}],
-  "count": 1,
-  "model_version": "1.0.0",
-  "request_id": "a8a8cff5-..."
-}
-
-// v2 — 200 response
-{
-  "predictions": [{"prediction": "setosa", "confidence": 1.0, "probabilities": {"setosa": 1.0, "versicolor": 0.0, "virginica": 0.0}}],
-  "count": 1,
-  "model_version": "1.0.0",
-  "request_id": "a8a8cff5-..."
-}
-```
-
-Exceeding the batch limit or sending an empty list returns 422 (same limit, both versions).
-
-### `GET /api/v1/model-info`
-
-Returns metadata from `ml/saved_model/model_info.json` (written by the
-training script — never hardcoded): `model_type`, `model_version`,
-`trained_on`, `feature_names`, `target_names`, `n_estimators`, `test_accuracy`.
-
-### `GET /api/v1/health`
-
-Returns `{"status": "ok", "model_loaded": true}` (or `"degraded"` / `false`).
-
-### `GET /metrics`
-
-Exposes live operational data in Prometheus text format — generic HTTP
-metrics (request counts, latency, payload sizes) from
-`prometheus-fastapi-instrumentator`, plus one custom, ML-specific metric:
-
-- **`iris_prediction_entropy_bits`** (histogram, labeled by `api_version`)
-  — the Shannon entropy of each successful prediction's probability
-  distribution. `0` bits means the model was fully decisive; up to
-  `log₂(3) ≈ 1.585` bits means the input landed right on a decision
-  boundary between two species. Recorded only on successful predictions
-  (a `422`/`400`/`500` never contributes an observation), so the metric
-  reflects genuine model uncertainty, not request failures.
-
-  Chosen over a simpler per-class request counter because it catches a
-  different failure mode: a class counter shows *what* the model is
-  predicting and can catch output-distribution drift, but says nothing
-  about individual predictions becoming less decisive while the overall
-  class mix looks normal. Entropy catches that directly, and it's
-  computed from probability data (`model.predict_proba()`) the app was
-  already calculating for `/api/v2/predict`'s response — no extra model
-  calls, no extra endpoint-specific logic.
-
-Unauthenticated by design, for the same reason as `/health`: Prometheus
-itself calls this endpoint on a schedule (every 5s per `prometheus.yml`)
-with no credentials, so requiring `X-API-Key` here would make the entire
-monitoring stack silently fail every scrape.
-
-An alert rule (`alert_rules.yml`, loaded by the bundled Prometheus
-container) watches the 15-minute rolling average of this metric and
-fires a `warning`-severity alert if it stays above `1.0` bits for a
-sustained 10 minutes — a single ambiguous prediction is expected model
-behavior (versicolor/virginica genuinely overlap), but a sustained rise
-is a signal worth investigating (data quality, distribution shift).
-
-## Authentication
-
-Every endpoint except `/api/v1/health` requires an `X-API-Key` header
-matching the configured `API_KEY`. Health checks are left open
-deliberately — infrastructure tooling (load balancers, uptime monitors)
-needs to reach them without holding a secret.
-
 ```bash
-curl -X POST http://localhost:8000/api/v1/predict \
+curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v1/predict-batch \
   -H "X-API-Key: your-key-here" \
   -H "Content-Type: application/json" \
-  -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'
+  -d '{"inputs": [{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}]}'
+```
+```json
+{"predictions": [{"prediction": "setosa", "confidence": 1.0}], "count": 1, "model_version": "1.0.0", "request_id": "a8a8cff5-..."}
 ```
 
-- **401** — missing or incorrect key. Comparison is constant-time
-  (`secrets.compare_digest`) to avoid leaking timing information about
-  a partially-correct key.
-- Failed attempts are logged (with `request_id`) but never log the
-  submitted key itself.
+### `GET /api/v1/model-info`
+```bash
+curl https://iris-flower-classification-api-gf1c.onrender.com/api/v1/model-info \
+  -H "X-API-Key: your-key-here"
+```
+Returns `model_type`, `model_version`, `trained_on`, `feature_names`,
+`target_names`, `n_estimators`, `test_accuracy`.
 
-## CORS
+### `GET /metrics` — Prometheus format, key-protected
+```bash
+curl https://iris-flower-classification-api-gf1c.onrender.com/metrics \
+  -H "X-API-Key: your-key-here"
+```
+Returns HTTP metrics plus a custom metric, `iris_prediction_entropy_bits`
+— the model's uncertainty on each prediction.
 
-Only origins listed in `ALLOWED_ORIGINS` (comma-separated in `.env`) can
-call this API from browser JavaScript. Not left wildcarded — an
-explicit allowlist is required, since `allow_credentials=True` combined
-with a wildcard origin is both a real security risk and something
-browsers reject outright.
+**Errors** (422 validation, 401 auth, 400/500 server) all include a
+`request_id` for tracing, without exposing internal details.
+
+---
+
+## Independent Extension: Grafana Dashboard
+
+Beyond the guided tasks, I built a Grafana dashboard on top of the
+Prometheus metrics from Task 18 — fully provisioned as code
+(`grafana/provisioning/`), so `docker compose up` produces the exact
+same working dashboard automatically, with no manual setup.
+
+![Grafana dashboard — request rate, latency, prediction entropy, and error rate](docs/images/grafana_dashboard.jpeg)
+
+Four panels: request rate by endpoint, p95 latency, p95 prediction
+entropy by API version, and error rate. This was chosen because the
+Prometheus/entropy monitoring work from Task 18 was already in place —
+a dashboard turns those raw metrics into something readable at a
+glance, and it's a stronger demonstration of the monitoring story than
+a written description alone.
+
+---
+
+## Testing
+
+Full investigation in **[TESTING.md](TESTING.md)**. Summary: unit +
+integration tests, plus a load test (50/100/200 concurrent users) that
+found and fixed a real performance bug — misconfigured worker processes
+combined with math-library thread oversubscription. Fixed by matching
+worker count to available CPU cores and forcing single-threaded math
+libraries: a 3–15x latency improvement, 0% failures throughout.
+
+```bash
+pytest -v
+API_KEY=<key> pytest tests/test_integration.py -v   # against a running container
+locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10 --run-time 60s
+```
+
+---
+
+## What I Learned
+
+Building this end to end, task by task, is what actually made these ideas
+concrete rather than theoretical:
+
+- **A model is not a product.** `model.predict()` in a notebook and a
+  service other programs can safely call over the internet are two
+  completely different engineering problems — validation, error handling,
+  logging, and versioning are most of the actual work.
+- **Separating training from serving matters.** The model is trained and
+  saved once, then loaded at startup and reused for every request — never
+  retrained or reloaded per call. That distinction seems obvious in
+  hindsight, but it shapes almost everything downstream: batching,
+  latency, and what actually needs to be fast.
+- **Validation is the real safety net.** Pushing every rule (types,
+  ranges, `extra="forbid"`) into Pydantic schemas means bad data never
+  reaches the model at all, and the API can never crash on malformed
+  input — it fails predictably with a 422 instead.
+- **A `request_id` is what makes logs usable, not just present.** Logging
+  everything is easy; logging it so one specific request's full story can
+  be traced through validation, inference, and the response is a
+  different, more deliberate habit.
+- **Configuration should have working defaults.** Centralizing settings
+  through `pydantic-settings`, with every value defaulting to something
+  sane, meant the app never depended on a perfectly-set-up environment to
+  simply run.
+- **Vectorize once, not per row.** Running inference on a whole batch in
+  a single call instead of looping was a small code change with a real
+  performance reason behind it — and the same helper serving both a
+  single prediction and a full batch meant that fix applied everywhere
+  automatically.
+- **Versioning has to be provably non-breaking, not just believed to be.**
+  Writing tests that feed v2-shaped data into v1's schema and assert
+  rejection was more convincing than any amount of manual checking.
+- **Security should be structural, not per-endpoint.** Applying the API
+  key check at the router level, not endpoint by endpoint, meant a new
+  route couldn't accidentally ship unprotected.
+- **Observability is a design decision, not an afterthought.** Choosing
+  prediction entropy over a simpler per-class counter meant thinking
+  about *what failure actually looks like* for this specific model,
+  not just wiring up whatever metric was easiest.
+- **A dashboard and an alert should watch the same data.** Building the
+  Grafana dashboard on top of the exact same Prometheus metric the alert
+  rule already used, instead of inventing new numbers, kept the two
+  consistent with each other by construction.
+- **"0% failures" doesn't mean "no problem."** Load testing surfaced a
+  real bug — silent, severe latency growth under concurrency — that every
+  passing unit test had completely missed, because unit tests can't see
+  concurrency at all. Finding it took measurement, not guessing: timing
+  logs, CPU stats, and testing one change at a time until the actual
+  cause (thread oversubscription, not enough workers) was clear.
+- **Knowing where a fix stops being possible is its own skill.** After
+  fixing the real bug, load stayed high at higher concurrency for a
+  different reason — the machine's real CPU ceiling. Telling those two
+  apart, with evidence, mattered more than chasing a lower number.
+- **Docker Compose removes "works on my machine" as an excuse.** Once the
+  API, Prometheus, and Grafana all start with one command, environment
+  drift stops being a plausible explanation for bugs.
+- **Deploying is a different skill from building.** Getting the same
+  container that runs locally to run reliably on a free-tier cloud host
+  surfaced small assumptions (cold starts, memory limits, no shared
+  filesystem) that never showed up in local development.
+- **Building the independent extension without being told how is where
+  it actually clicked.** Every earlier task had a clear spec to follow;
+  deciding what a Grafana dashboard on this project *should* show, and
+  building it myself, was the first time nothing was handed to me — and
+  the first time I noticed I could.
+
+---
 
 ## Configuration
-
-Twelve-factor style: environment-specific values live in `.env`
-(git-ignored), not in code. `.env.example` is committed and documents
-what's expected. Every setting has a working default, so the app runs
-even with no `.env` present.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -253,86 +307,15 @@ even with no `.env` present.
 | `MODEL_INFO_PATH` | `ml/saved_model/model_info.json` | Model metadata file |
 | `LOG_LEVEL` | `INFO` | Minimum log level |
 | `MAX_BATCH_SIZE` | `100` | Max items per `/predict-batch` call |
-| `API_TITLE` | `Iris Flower Classification API` | Shown in `/docs` and `/` |
-| `API_KEY` | *(placeholder)* | Required for all endpoints except `/health` |
-| `ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated list of origins allowed by CORS |
+| `API_KEY` | *(you set this)* | Required for all endpoints except `/health` |
+| `ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated CORS allowlist |
+| `WORKERS` | `1` | Uvicorn worker processes. `1` is the safe default baked into the image (fits low-memory hosts like Render's free tier). `docker-compose.yml` overrides this to `8` for local use, to match available CPU cores — adjust to your own machine's core count. |
 
-## Engineering Notes
-
-- **Validation** — feature-specific `ge`/`le` bounds derived from the dataset. `extra="forbid"` on every schema, request AND response — unexpected input is rejected before it reaches the model, and any accidental extra field on a response object raises immediately instead of silently leaking or dropping.
-- **Response shape** — every endpoint has a strict `response_model`; no unintended fields ever reach the client.
-- **Error handling** — `ValueError` → 400, anything else → 500, consistently across every endpoint, both versions. Client sees a safe generic message; the real error is logged server-side only.
-- **Tracing** — one `request_id` per request, generated once in middleware, flowing through the log line, response body, and `X-Request-ID` header.
-- **Logging** — console + rotating file (`logs/app.log`, ~1MB, 3 backups). DEBUG (raw features), INFO (requests/success), WARNING (>200ms), ERROR (failures).
-- - **Startup failure handling** — model/config loading in the `lifespan` function is wrapped in a try/except that logs the real error to `logs/app.log` before re-raising, so a bad `MODEL_PATH` or corrupted model file leaves a traceable record instead of only a console message that disappears when the terminal closes.
-- **API versioning** — `app/routers/v1.py` and `v2.py`, each their own `APIRouter`, both included into `app` in `main.py`. v2 imports and reuses v1's inference helpers directly rather than duplicating them — the only genuinely new code per version is its own schema and route logic. Proven independent with tests that construct v1's schema with v2-shaped data and confirm it's rejected, not silently accepted.
-- **Batch efficiency** — every predict/predict-batch route (both versions) shares one inference helper that calls `model.predict()`/`predict_proba()` exactly once per request, on the whole array.
-- **Configuration** — centralized in `app/config.py` via `pydantic-settings`. The batch size limit is enforced through a `field_validator` that reads the setting at *request time*, so it's genuinely reconfigurable without restarting the app.
-- **Containerization** — single-stage `python:3.11-slim` build, layered so `requirements.txt` installs in its own cached layer separate from app code, keeping rebuilds fast. `.dockerignore` excludes `venv/`, `.env`, `logs/`, and test artifacts from the image.
-- **Authentication & CORS** — every route except `/health` requires `X-API-Key`, checked via a FastAPI `Security` dependency applied at the router level (not per-endpoint, so nothing new can accidentally ship unprotected). CORS origins are explicitly allowlisted via `ALLOWED_ORIGINS`, never wildcarded. 
-- **Testing** — 65 pytest cases across validation, response shape, both error paths, logging, batch prediction, model metadata, cross-version isolation, and authentication/authorization edge cases.
-- **Monitoring** — `prometheus-fastapi-instrumentator` wires up generic HTTP metrics automatically (`http_requests_total`, `http_request_duration_seconds`, payload sizes, in-progress requests). One custom metric was added on top — `iris_prediction_entropy_bits` (see **API Contract → `GET /metrics`** above) — chosen deliberately over the simpler per-class counter the task suggested, because it captures per-prediction model uncertainty rather than just output distribution. A bundled Prometheus container (`docker-compose.yml`) scrapes `/metrics` every 5s and evaluates an alert rule on sustained high uncertainty (`alert_rules.yml`). 
-- **Testing** — pytest suite across validation, response shape, both error paths, logging, batch prediction, model metadata, cross-version isolation, authentication/authorization edge cases, and dedicated coverage for the `/metrics` endpoint and the entropy metric's correctness (`tests/test_metrics.py`) — including that failed/invalid requests never record an entropy observation, and that batch calls record one observation per item, not one per request.
-
+---
 
 ## Technology Stack
 
-Python 3.11+ · scikit-learn (Random Forest) · FastAPI · Pydantic · pydantic-settings · Uvicorn · Joblib · pytest · Docker · Docker Compose · Prometheus · prometheus-fastapi-instrumentator ·Git
+Python 3.11+ · scikit-learn · FastAPI · Pydantic · Uvicorn · Docker ·
+Docker Compose · Prometheus · Grafana · Locust · pytest · Render
 
-## API Endpoints
-
-| Method | Endpoint | Purpose | Status |
-|---|---|---|---|
-| POST | `/api/v1/predict` | Predict one input | Done |
-| POST | `/api/v1/predict-batch` | Predict on a batch | Done |
-| POST | `/api/v2/predict` | Predict one input + full probability breakdown | Done |
-| POST | `/api/v2/predict-batch` | Predict on a batch + full probability breakdown | Done |
-| GET | `/api/v1/model-info` | Model metadata | Done |
-| GET | `/api/v1/health` | Health check | Done |
-| GET | `/metrics` | Prometheus metrics (HTTP + custom entropy metric) | Done |
-
-## Project Roadmap
-
-### Phase 1 — Foundation
-- [x] Project planning, dataset prep, model training/evaluation/serialization
-
-### Phase 2 — Core API
-- [x] FastAPI app, model loading, prediction endpoint
-- [x] Pydantic validation (feature-specific bounds, extra fields forbidden)
-- [x] Error handling & response models (`response_model`, 400/500 split, `request_id` in errors)
-- [x] Structured logging (console + rotating file, all four log levels)
-- [x] Request-ID middleware (traced across logs, response body, response header)
-
-### Phase 3 — API Features
-- [x] API versioning (`/api/v1` via `APIRouter`, `app/routers/` structure)
-- [x] Additional endpoints (`/predict-batch`, `/model-info`)
-- [x] Configuration management (`pydantic-settings`, `.env` / `.env.example`)
-- [x] Automated testing (59 pytest cases, organized in `tests/`)
-- [x] Build and test the breaking `/v2` change (full parity with v1, cross-version isolation proven by tests)
-
-### Phase 4 — Production Readiness
-- [x] Docker
-- [x] Docker Compose
-- [x] API-key security & CORS configuration
-
-### Phase 5 — Monitoring & Deployment
-- [x] Prometheus metrics (`/metrics`)
-- [x] Load testing
-- [ ] Cloud deployment
-- [ ] Final documentation
-
-### Phase 6 — Extension (Planned)
-- [ ] Streamlit frontend calling the deployed API, once the core API and
-      versioning are stable
-- [ ] Alertmanager integration (route the existing `HighPredictionUncertainty`
-      alert to a real notification channel — currently visible only in
-      Prometheus's own UI)
-
-
-## Project Goal
-
-Demonstrate how a machine learning model can be transformed from a
-notebook script into a validated, tested, versioned, configurable,
-containerized, monitored, and deployable production API — one that fails
-helpfully, not just safely. The emphasis is on ML deployment and software
-engineering practices, not model complexity.
+---

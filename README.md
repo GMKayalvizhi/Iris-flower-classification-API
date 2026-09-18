@@ -14,35 +14,35 @@ monitoring, load testing, and deployment — rather than model complexity.
 ## Architecture
 
 ```
-                         ┌─────────────────────────┐
-  curl / Postman /  ───► │   FastAPI (Uvicorn)      │
-  frontend / browser     │   - request_id middleware │
-                         │   - CORS                  │
-                         │   - Pydantic validation    │
-                         └────────────┬──────────────┘
-                                      │
-                         ┌────────────▼──────────────┐
-                         │   app/inference.py          │
-                         │   model.predict_proba()      │
-                         │   (loaded once at startup)    │
-                         └────────────┬──────────────┘
-                                      │
-                    ┌─────────────────┼─────────────────┐
-                    ▼                 ▼                 ▼
-              JSON response    Structured logs    Prometheus metrics
-              to client        (console + file)   (/metrics, key-protected)
-                                                          │
-                                                          ▼
-                                            ┌──────────────────────────┐
-                                            │  Prometheus (local)        │
-                                            │  scrapes /metrics every 5s  │
-                                            └────────────┬────────────┘
-                                                          │
-                                                          ▼
-                                            ┌──────────────────────────┐
-                                            │  Grafana (local)           │
-                                            │  dashboard, auto-provisioned │
-                                            └──────────────────────────┘
+                         ┌──────────────────────────────────────┐
+  curl / Postman / ────► │ FastAPI (Uvicorn)                   │
+  frontend / browser     │ request_id middleware                │
+                         │ CORS                                 │
+                         │ Pydantic validation                  │
+                         └───────────────┬──────────────────────┘
+                                         │
+                         ┌───────────────▼──────────────────────┐
+                         │ app/inference.py                     │
+                         │ model.predict_proba()                │
+                         │ loaded once at startup               │
+                         └───────────────┬──────────────────────┘
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    ▼                    ▼                    ▼
+             JSON response       Structured logs      Prometheus metrics
+             to client           console + file        /metrics
+                                                         │
+                                                         ▼
+                                      ┌──────────────────────────────┐
+                                      │ Prometheus (local)            │
+                                      │ scrapes /metrics every 5s     │
+                                      └──────────────┬───────────────┘
+                                                     │
+                                                     ▼
+                                      ┌──────────────────────────────┐
+                                      │ Grafana (local)               │
+                                      │ auto-provisioned dashboard    │
+                                      └──────────────────────────────┘
 ```
 
 ---

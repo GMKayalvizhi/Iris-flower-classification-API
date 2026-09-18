@@ -14,35 +14,35 @@ monitoring, load testing, and deployment — rather than model complexity.
 ## Architecture
 
 ```
-                         ┌─────────────────────────┐
-  curl / Postman /  ───► │   FastAPI (Uvicorn)      │
-  frontend / browser     │   - request_id middleware │
-                         │   - CORS                  │
-                         │   - Pydantic validation    │
-                         └────────────┬──────────────┘
-                                      │
-                         ┌────────────▼──────────────┐
-                         │   app/inference.py          │
-                         │   model.predict_proba()      │
-                         │   (loaded once at startup)    │
-                         └────────────┬──────────────┘
-                                      │
-                    ┌─────────────────┼─────────────────┐
-                    ▼                 ▼                 ▼
-              JSON response    Structured logs    Prometheus metrics
-              to client        (console + file)   (/metrics, key-protected)
-                                                          │
-                                                          ▼
-                                            ┌──────────────────────────┐
-                                            │  Prometheus (local)        │
-                                            │  scrapes /metrics every 5s  │
-                                            └────────────┬────────────┘
-                                                          │
-                                                          ▼
-                                            ┌──────────────────────────┐
-                                            │  Grafana (local)           │
-                                            │  dashboard, auto-provisioned │
-                                            └──────────────────────────┘
+                         ┌──────────────────────────────────────┐
+  curl / Postman / ────► │ FastAPI (Uvicorn)                    │
+  frontend / browser     │ request_id middleware                │
+                         │ CORS                                 │
+                         │ Pydantic validation                  │
+                         └───────────────┬──────────────────────┘
+                                         │
+                         ┌───────────────▼──────────────────────┐
+                         │ app/inference.py                     │
+                         │ model.predict_proba()                │
+                         │ loaded once at startup               │
+                         └───────────────┬──────────────────────┘
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    ▼                    ▼                    ▼
+             JSON response       Structured logs      Prometheus metrics
+             to client           console + file        /metrics
+                                                         │
+                                                         ▼
+                                      ┌──────────────────────────────┐
+                                      │ Prometheus (local)           │
+                                      │ scrapes /metrics every 5s    │
+                                      └──────────────┬───────────────┘
+                                                     │
+                                                     ▼
+                                      ┌──────────────────────────────┐
+                                      │ Grafana (local)              │
+                                      │ auto-provisioned dashboard   │
+                                      └──────────────────────────────┘
 ```
 
 ---
@@ -70,6 +70,9 @@ standalone service.
 
 ## Setup
 
+**Prerequisites:** Python 3.11+, `git`, and (for Option B only) Docker
+Desktop.
+
 ### Option A — API only (fastest way to try it locally)
 
 ```bash
@@ -90,6 +93,8 @@ Open `.env` and set `API_KEY` to any value you choose:
 ```bash
 python -c "import secrets; print(secrets.token_hex(16))"
 ```
+Copy the printed string into `.env`, replacing the `API_KEY=` line, e.g.
+`API_KEY=<paste-the-generated-value-here>`.
 
 ```bash
 uvicorn app.main:app --reload
@@ -101,14 +106,23 @@ Open **http://127.0.0.1:8000/docs** — click **Authorize**, paste your
 ### Option B — Full stack: API + Prometheus + Grafana together
 
 Requires Docker Desktop.
-
+ 
 ```bash
-copy .env.example .env
-copy prometheus_api_key_example.txt prometheus_api_key.txt
+copy .env.example .env        # Windows
+# cp .env.example .env        # macOS/Linux
 ```
-Fill in your real `API_KEY` in both files (same value in both —
-`prometheus_api_key.txt` is what lets Prometheus authenticate against the
-protected `/metrics` endpoint).
+Set your real `API_KEY` in `.env`.
+ 
+Create your own `prometheus_api_key.txt` from the example file, then
+edit it to contain only your real key (no comments, no quotes):
+```bash
+copy prometheus_api_key_example.txt prometheus_api_key.txt   # Windows
+# cp prometheus_api_key_example.txt prometheus_api_key.txt  # macOS/Linux
+```
+`prometheus_api_key.txt` is git-ignored — you're creating it locally,
+it's never committed. Use the **same** key value as `.env`, since this
+is what lets Prometheus authenticate against the protected `/metrics`
+endpoint.
 
 ```bash
 docker compose up --build

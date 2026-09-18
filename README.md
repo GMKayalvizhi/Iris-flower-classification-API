@@ -49,7 +49,7 @@ monitoring, load testing, and deployment — rather than model complexity.
 
 ## Deployment
 
-**Live API:** https://iris-flower-classification-api-gf1c.onrender.com\docs
+**Live API:** https://iris-flower-classification-api-gf1c.onrender.com/docs
 
 Deployed as a standalone Docker container on **Render** (free tier). The
 service spins down after 15 minutes of inactivity — the first request

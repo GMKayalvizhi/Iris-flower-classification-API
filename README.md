@@ -49,7 +49,7 @@ monitoring, load testing, and deployment — rather than model complexity.
 
 ## Deployment
 
-**Live API:** https://iris-flower-classification-api-gf1c.onrender.com\docs
+**Live API:** https://iris-flower-classification-api-gf1c.onrender.com/docs
 
 Deployed as a standalone Docker container on **Render** (free tier). The
 service spins down after 15 minutes of inactivity — the first request
@@ -100,8 +100,30 @@ Copy the printed string into `.env`, replacing the `API_KEY=` line, e.g.
 uvicorn app.main:app --reload
 ```
 
-Open **http://127.0.0.1:8000/docs** — click **Authorize**, paste your
-`API_KEY`, and try every endpoint from the browser. Run tests: `pytest -v`
+Leave this terminal running — don't close it or stop the server.
+ 
+Open **http://127.0.0.1:8000/docs** in your browser — click
+**Authorize**, paste your `API_KEY`, and try every endpoint directly
+from there. This also confirms the server is actually reachable.
+ 
+Then, in a **second, separate terminal** (with the server from above
+still running in the first one) — set `API_KEY` first, because `test_integration.py` 
+sends real HTTP requests to the running server rather than bypassing security
+like the other tests do, so it needs the actual `API_KEY` to get past
+authentication, same as any real client:
+```bash
+API_KEY=<your-key> pytest -v                # macOS/Linux
+$env:API_KEY="<your-key>"; pytest -v        # Windows PowerShell
+```
+ 
+If you'd rather run only the tests that don't need a server or a key
+at all, use:
+```bash
+pytest -v --ignore=tests/test_integration.py
+```
+If `pytest -v` shows connection errors on the integration tests, the
+server has stopped running in the first terminal — start it again and
+keep that terminal open while you run tests in the second one.
 
 ### Option B — Full stack: API + Prometheus + Grafana together
 
@@ -311,8 +333,7 @@ concrete rather than theoretical:
 - **Building the independent extension without being told how is where
   it actually clicked.** Every earlier task had a clear spec to follow;
   deciding what a Grafana dashboard on this project *should* show, and
-  building it myself, was the first time nothing was handed to me — and
-  the first time I noticed I could.
+  building it myself, was my independent extension.
 
 ---
 

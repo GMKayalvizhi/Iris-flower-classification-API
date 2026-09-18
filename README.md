@@ -107,8 +107,10 @@ Open **http://127.0.0.1:8000/docs** in your browser — click
 from there. This also confirms the server is actually reachable.
  
 Then, in a **second, separate terminal** (with the server from above
-still running in the first one) — set `API_KEY` first, since
-`tests/test_integration.py` needs it:
+still running in the first one) — set `API_KEY` first, because `test_integration.py` 
+sends real HTTP requests to the running server rather than bypassing security
+like the other tests do, so it needs the actual `API_KEY` to get past
+authentication, same as any real client:
 ```bash
 API_KEY=<your-key> pytest -v                # macOS/Linux
 $env:API_KEY="<your-key>"; pytest -v        # Windows PowerShell

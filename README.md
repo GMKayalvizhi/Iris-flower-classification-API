@@ -70,6 +70,9 @@ standalone service.
 
 ## Setup
 
+**Prerequisites:** Python 3.11+, `git`, and (for Option B only) Docker
+Desktop.
+
 ### Option A — API only (fastest way to try it locally)
 
 ```bash
@@ -90,6 +93,8 @@ Open `.env` and set `API_KEY` to any value you choose:
 ```bash
 python -c "import secrets; print(secrets.token_hex(16))"
 ```
+Copy the printed string into `.env`, replacing the `API_KEY=` line, e.g.
+`API_KEY=<paste-the-generated-value-here>`.
 
 ```bash
 uvicorn app.main:app --reload

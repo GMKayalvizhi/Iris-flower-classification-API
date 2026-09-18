@@ -311,8 +311,7 @@ concrete rather than theoretical:
 - **Building the independent extension without being told how is where
   it actually clicked.** Every earlier task had a clear spec to follow;
   deciding what a Grafana dashboard on this project *should* show, and
-  building it myself, was the first time nothing was handed to me — and
-  the first time I noticed I could.
+  building it myself, was my independent extension.
 
 ---
 

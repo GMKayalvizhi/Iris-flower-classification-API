@@ -30,7 +30,7 @@ the available cores.
 | Users | Avg (before) | Avg (after) | Improvement | Throughput (after) | Failures |
 |---|---|---|---|---|---|
 | 50  | 2021ms | 134ms  | 15x  | 110.2 req/s | 0% |
-| 100 | 1392ms | 438ms  | 3.2x | 123.6 req/s | 0% |
+| 100 | 4380ms | 438ms  | 10x | 123.6 req/s | 0% |
 | 200 | 8805ms | 1301ms | 6.8x | 113.4 req/s | 0% |
 
 CPU usage during the 100-user test rose from ~187% to ~546% (of an

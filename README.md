@@ -100,8 +100,28 @@ Copy the printed string into `.env`, replacing the `API_KEY=` line, e.g.
 uvicorn app.main:app --reload
 ```
 
-Open **http://127.0.0.1:8000/docs** — click **Authorize**, paste your
-`API_KEY`, and try every endpoint from the browser. Run tests: `pytest -v`
+Leave this terminal running — don't close it or stop the server.
+ 
+Open **http://127.0.0.1:8000/docs** in your browser — click
+**Authorize**, paste your `API_KEY`, and try every endpoint directly
+from there. This also confirms the server is actually reachable.
+ 
+Then, in a **second, separate terminal** (with the server from above
+still running in the first one) — set `API_KEY` first, since
+`tests/test_integration.py` needs it:
+```bash
+API_KEY=<your-key> pytest -v                # macOS/Linux
+$env:API_KEY="<your-key>"; pytest -v        # Windows PowerShell
+```
+ 
+If you'd rather run only the tests that don't need a server or a key
+at all, use:
+```bash
+pytest -v --ignore=tests/test_integration.py
+```
+If `pytest -v` shows connection errors on the integration tests, the
+server has stopped running in the first terminal — start it again and
+keep that terminal open while you run tests in the second one.
 
 ### Option B — Full stack: API + Prometheus + Grafana together
 

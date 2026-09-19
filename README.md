@@ -71,7 +71,7 @@ standalone service.
 ## Setup
 
 **Prerequisites:** Python 3.11+, `git`, and (for Option B only) Docker
-Desktop and the Docker Engine should run.
+Desktop.
 
 ### Option A — API only (fastest way to try it locally)
 
@@ -127,7 +127,7 @@ keep that terminal open while you run tests in the second one.
 
 ### Option B — Full stack: API + Prometheus + Grafana together
 
-Requires Docker Desktop.
+Requires Docker Desktop and the Docker engine should be running.
  
 ```bash
 copy .env.example .env        # Windows

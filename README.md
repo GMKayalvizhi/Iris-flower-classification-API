@@ -71,7 +71,7 @@ standalone service.
 ## Setup
 
 **Prerequisites:** Python 3.11+, `git`, and (for Option B only) Docker
-Desktop.
+Desktop and the Docker Engine should run.
 
 ### Option A — API only (fastest way to try it locally)
 

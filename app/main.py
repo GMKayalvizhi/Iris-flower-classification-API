@@ -47,6 +47,11 @@ async def lifespan(app: FastAPI):
     is logged before re-raising so the cause is visible in the logs,
     not just a stack trace on the console.
     """
+    if "API_KEY" not in settings.model_fields_set:
+        logger.warning(
+            "API_KEY is not set - using a random key generated at startup, so every "
+            "client will get 401. Set API_KEY in .env or the host's environment variables."
+        )
 
     try:
         ml_models["iris_classifier"] = joblib.load(settings.MODEL_PATH)

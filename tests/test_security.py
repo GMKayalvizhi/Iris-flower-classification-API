@@ -11,12 +11,9 @@ from app.config import settings
 
 
 def test_predict_without_api_key_returns_401(client, valid_input):
-    """No X-API-Key header at all -> 401, not a crash or silent pass."""
-    response = client.post(
-        "/api/v1/predict",
-        json=valid_input,
-        headers={"X-API-Key": ""},
-    )
+    """No X-API-Key header at all -> 401."""
+    client.headers.pop("X-API-Key", None)     # truly remove the header
+    response = client.post("/api/v1/predict", json=valid_input)
     assert response.status_code == 401
 
 
@@ -69,23 +66,16 @@ def test_predict_batch_rejects_unexpected_extra_field(client, valid_input):
     assert response.status_code == 422
 
 
-def test_v2_predict_also_requires_api_key(client, valid_input):
-    """
-    Confirms v2 isn't accidentally left unprotected -- same auth
-    dependency must be applied to both routers, not just v1.
-    """
-    response = client.post(
-        "/api/v2/predict",
-        json=valid_input,
-        headers={"X-API-Key": ""},
-    )
+def test_predict_without_api_key_returns_401(client, valid_input):
+    """No X-API-Key header at all -> 401."""
+    client.headers.pop("X-API-Key", None)     # truly remove the header
+    response = client.post("/api/v2/predict", json=valid_input)
     assert response.status_code == 401
 
 
-def test_health_does_not_require_api_key(client):
-    """
-    /health is deliberately left unauthenticated for infrastructure
-    tooling (load balancers, uptime monitors) that can't hold a secret.
-    """
-    response = client.get("/api/v1/health", headers={})
+def test_health_does_not_require_api_key():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as bare_client:      # no default key header
+        response = bare_client.get("/api/v1/health")
     assert response.status_code == 200

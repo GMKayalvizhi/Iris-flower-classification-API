@@ -5,17 +5,17 @@
 #
 # This module has no dependencies on other app modules to avoid
 # circular import issues.
-
+import secrets
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """
-    Every field here has a sane default, so the app still runs with no
-    .env file present at all (e.g. a fresh clone before anyone's set
-    one up). Environment variables / .env values override these
-    defaults when present -- pydantic-settings handles that matching
-    automatically by field name.
+    Every field here has a sane default, except API_KEY: a secret must never
+    have a public default, so if it is not set a random key is generated at
+    startup (and every client gets 401 until a real key is configured).
+    Environment variables / .env values override these defaults when present.
     """
 
     MODEL_PATH: str = "ml/saved_model/model.joblib"
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     MAX_BATCH_SIZE: int = 100
     API_TITLE: str = "Iris Flower Classification API"
-    API_KEY: str = "changeme-in-env"  # placeholder default; real value comes from .env
+    API_KEY: str = Field(default_factory=lambda: secrets.token_hex(16))  # random if unset; real value comes from .env or the host's environment
     ALLOWED_ORIGINS: str = "http://localhost:3000"  # comma-separated list
 
 

@@ -66,7 +66,7 @@ def test_predict_batch_rejects_unexpected_extra_field(client, valid_input):
     assert response.status_code == 422
 
 
-def test_predict_without_api_key_returns_401(client, valid_input):
+def test_v2_predict_without_api_key_returns_401(client, valid_input):
     """No X-API-Key header at all -> 401."""
     client.headers.pop("X-API-Key", None)     # truly remove the header
     response = client.post("/api/v2/predict", json=valid_input)

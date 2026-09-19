@@ -112,8 +112,8 @@ sends real HTTP requests to the running server rather than bypassing security
 like the other tests do, so it needs the actual `API_KEY` to get past
 authentication, same as any real client:
 ```bash
-API_KEY=<your-key> pytest -v                # macOS/Linux
 $env:API_KEY="<your-key>"; pytest -v        # Windows PowerShell
+API_KEY=<your-key> pytest -v                # macOS/Linux
 ```
  
 If you'd rather run only the tests that don't need a server or a key

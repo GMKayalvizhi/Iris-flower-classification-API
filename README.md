@@ -152,9 +152,11 @@ docker compose up --build
 
 - **API:** http://localhost:8000/docs
 - **Prometheus:** http://localhost:9090 (Status → Targets should show `iris-api` as `UP`)
-- **Grafana:** http://localhost:3000 — dashboard loads automatically
+- **Grafana:** http://localhost:3000 - login
   - Username: `admin`
   - Password: `admin`
+  - The dashboard is created automatically. Open it from **Dashboards → Iris API — Monitoring**.
+  - Panels stay empty until the API receives requests, so send a few predictions first.
 
 **To stop:** `docker compose down`
 

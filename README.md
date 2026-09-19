@@ -277,7 +277,7 @@ libraries: a 3–15x latency improvement, 0% failures throughout.
 ```bash
 pytest -v --ignore=tests/test_integration.py
 $env:API_KEY="<your-key>"; pytest tests/test_integration.py -v   # against a running container
-locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10 --run-time 60s
+locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10 --run-time 60s --headless
 ```
 
 ---

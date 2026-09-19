@@ -112,8 +112,8 @@ sends real HTTP requests to the running server rather than bypassing security
 like the other tests do, so it needs the actual `API_KEY` to get past
 authentication, same as any real client:
 ```bash
-API_KEY=<your-key> pytest -v                # macOS/Linux
 $env:API_KEY="<your-key>"; pytest -v        # Windows PowerShell
+API_KEY=<your-key> pytest -v                # macOS/Linux
 ```
  
 If you'd rather run only the tests that don't need a server or a key
@@ -127,7 +127,7 @@ keep that terminal open while you run tests in the second one.
 
 ### Option B — Full stack: API + Prometheus + Grafana together
 
-Requires Docker Desktop.
+Requires Docker Desktop and the Docker engine should be running.
  
 ```bash
 copy .env.example .env        # Windows
@@ -152,9 +152,11 @@ docker compose up --build
 
 - **API:** http://localhost:8000/docs
 - **Prometheus:** http://localhost:9090 (Status → Targets should show `iris-api` as `UP`)
-- **Grafana:** http://localhost:3000 — dashboard loads automatically
+- **Grafana:** http://localhost:3000 - login
   - Username: `admin`
   - Password: `admin`
+  - The dashboard is created automatically. Open it from **Dashboards → Iris API — Monitoring**.
+  - Panels stay empty until the API receives requests, so send a few predictions first.
 
 **To stop:** `docker compose down`
 
@@ -163,11 +165,14 @@ docker compose up --build
 ## API Reference — Example Requests for Every Endpoint
 
 All endpoints require an `X-API-Key` header except `/api/v1/health`.
-Examples use the live deployed URL — swap in `http://localhost:8000` to run locally.
+Examples use `http://localhost:8000` (after `docker compose up` or
+`uvicorn app.main:app --reload`). Swap in the live URL to test the
+deployed instance instead:
+https://iris-flower-classification-api-gf1c.onrender.com
 
 ### `GET /api/v1/health` — no key required
 ```bash
-curl https://iris-flower-classification-api-gf1c.onrender.com/api/v1/health
+curl http://localhost:8000/api/v1/health
 ```
 ```json
 {"status": "ok", "model_loaded": true}
@@ -175,7 +180,7 @@ curl https://iris-flower-classification-api-gf1c.onrender.com/api/v1/health
 
 ### `POST /api/v1/predict`
 ```bash
-curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v1/predict \
+curl -X POST http://localhost:8000/api/v1/predict \
   -H "X-API-Key: your-key-here" \
   -H "Content-Type: application/json" \
   -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'
@@ -186,7 +191,7 @@ curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v1/pre
 
 ### `POST /api/v2/predict` — adds a full probability breakdown
 ```bash
-curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v2/predict \
+curl -X POST http://localhost:8000/api/v2/predict \
   -H "X-API-Key: your-key-here" \
   -H "Content-Type: application/json" \
   -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'
@@ -201,9 +206,9 @@ curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v2/pre
 }
 ```
 
-### `POST /api/v1/predict-batch` · `POST /api/v2/predict-batch`
+### `POST /api/v1/predict-batch`
 ```bash
-curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v1/predict-batch \
+curl -X POST http://localhost:8000/api/v1/predict-batch \
   -H "X-API-Key: your-key-here" \
   -H "Content-Type: application/json" \
   -d '{"inputs": [{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}]}'
@@ -212,9 +217,20 @@ curl -X POST https://iris-flower-classification-api-gf1c.onrender.com/api/v1/pre
 {"predictions": [{"prediction": "setosa", "confidence": 1.0}], "count": 1, "model_version": "1.0.0", "request_id": "a8a8cff5-..."}
 ```
 
+### `POST /api/v2/predict-batch` — same request shape, adds probabilities per item
+```bash
+curl -X POST http://localhost:8000/api/v2/predict-batch \
+  -H "X-API-Key: your-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"inputs": [{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}]}'
+```
+```json
+{"predictions": [{"prediction": "setosa", "confidence": 1.0, "probabilities": {"setosa": 1.0, "versicolor": 0.0, "virginica": 0.0}}], "count": 1, "model_version": "1.0.0", "request_id": "b2c3d4e5-..."}
+```
+
 ### `GET /api/v1/model-info`
 ```bash
-curl https://iris-flower-classification-api-gf1c.onrender.com/api/v1/model-info \
+curl http://localhost:8000/api/v1/model-info \
   -H "X-API-Key: your-key-here"
 ```
 Returns `model_type`, `model_version`, `trained_on`, `feature_names`,
@@ -222,7 +238,7 @@ Returns `model_type`, `model_version`, `trained_on`, `feature_names`,
 
 ### `GET /metrics` — Prometheus format, key-protected
 ```bash
-curl https://iris-flower-classification-api-gf1c.onrender.com/metrics \
+curl http://localhost:8000/metrics \
   -H "X-API-Key: your-key-here"
 ```
 Returns HTTP metrics plus a custom metric, `iris_prediction_entropy_bits`
@@ -261,9 +277,9 @@ worker count to available CPU cores and forcing single-threaded math
 libraries: a 3–15x latency improvement, 0% failures throughout.
 
 ```bash
-pytest -v
-API_KEY=<key> pytest tests/test_integration.py -v   # against a running container
-locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10 --run-time 60s
+pytest -v --ignore=tests/test_integration.py
+$env:API_KEY="<your-key>"; pytest tests/test_integration.py -v   # against a running container
+locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10 --run-time 60s --headless
 ```
 
 ---

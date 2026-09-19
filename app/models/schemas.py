@@ -61,8 +61,8 @@ class PredictionOutput(BaseModel):
             "example": {
                 "prediction": "setosa",
                 "confidence": 0.97,
-                "model_version": "v1",
-                "request_id": "not-yet-implemented",
+                "model_version": "1.0.0",
+                "request_id": "a1b2c3d4-...",
             }
         }
     }

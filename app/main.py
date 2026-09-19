@@ -8,7 +8,7 @@ intentionally does very little logic itself -- prediction logic lives
 in app/routers/, validation lives in app/models/schemas.py, and auth
 lives in app/security.py. main.py's job is assembly, not behavior.
 """
-
+import os
 import json
 import time
 import uuid
@@ -27,7 +27,7 @@ from app.routers.v1 import health_router as v1_health_router
 from app.routers.v2 import router as v2_router
 
 from starlette.responses import Response
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CollectorRegistry, generate_latest, multiprocess,CONTENT_TYPE_LATEST
 from app.security import verify_api_key
 
 
@@ -134,6 +134,10 @@ def root():
 
 @app.get("/metrics", dependencies=[Depends(verify_api_key)])
 def metrics():
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry)
+        return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

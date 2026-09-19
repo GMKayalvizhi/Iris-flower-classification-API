@@ -80,6 +80,8 @@ git clone https://github.com/GMKayalvizhi/Iris-flower-classification-API.git
 cd Iris-flower-classification-API
 
 python -m venv venv
+# python3 -m venv venv       # macOS/Linux
+
 venv\Scripts\activate        # Windows
 # source venv/bin/activate   # macOS/Linux
 
@@ -105,15 +107,18 @@ Leave this terminal running — don't close it or stop the server.
 Open **http://127.0.0.1:8000/docs** in your browser — click
 **Authorize**, paste your `API_KEY`, and try every endpoint directly
 from there. This also confirms the server is actually reachable.
- 
+
 Then, in a **second, separate terminal** (with the server from above
-still running in the first one) — set `API_KEY` first, because `test_integration.py` 
-sends real HTTP requests to the running server rather than bypassing security
-like the other tests do, so it needs the actual `API_KEY` to get past
-authentication, same as any real client:
+still running in the first one) — open it in the project folder and
+activate the virtual environment again (`venv\Scripts\activate` on
+Windows, `source venv/bin/activate` on macOS/Linux). Set `API_KEY`
+first, because `test_integration.py` sends real HTTP requests to the
+running server rather than bypassing security like the other tests do,
+so it needs the actual `API_KEY` to get past authentication, same as
+any real client:
 ```bash
-$env:API_KEY="<your-key>"; pytest -v        # Windows PowerShell
-API_KEY=<your-key> pytest -v                # macOS/Linux
+$env:API_KEY="your-key"; pytest -v        # Windows PowerShell
+API_KEY=your-key pytest -v                # macOS/Linux
 ```
  
 If you'd rather run only the tests that don't need a server or a key
@@ -146,6 +151,10 @@ it's never committed. Use the **same** key value as `.env`, since this
 is what lets Prometheus authenticate against the protected `/metrics`
 endpoint.
 
+> **Important:** this file must exist **before** you run
+> `docker compose up`. If it's missing, Docker creates a *folder* with
+> that name and Prometheus can't start.
+
 ```bash
 docker compose up --build
 ```
@@ -170,6 +179,18 @@ Examples use `http://localhost:8000` (after `docker compose up` or
 deployed instance instead:
 https://iris-flower-classification-api-gf1c.onrender.com
 
+Authenticated endpoints on the live URL need an API key. `/docs` and
+`/api/v1/health` are open, so use those to look around.
+
+> **Windows PowerShell users:** in PowerShell, `curl` is an alias for a
+> different command and the examples below will fail as written. Either
+> use `curl.exe` instead of `curl`, or use this form:
+> ```powershell
+> Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/predict `
+>   -Headers @{"X-API-Key"="your-key-here"} -ContentType "application/json" `
+>   -Body '{"sepal_length":5.1,"sepal_width":3.5,"petal_length":1.4,"petal_width":0.2}'
+> ```
+
 ### `GET /api/v1/health` — no key required
 ```bash
 curl http://localhost:8000/api/v1/health
@@ -177,6 +198,15 @@ curl http://localhost:8000/api/v1/health
 ```json
 {"status": "ok", "model_loaded": true}
 ```
+
+The API accepts Iris flower sepal and petal length and width measurements, measured in centimeters (cm). Values outside the following ranges are rejected with a 422 Unprocessable Entity response.
+
+| Field | Allowed range |
+|---|---|
+| `sepal_length` | 4.3 – 7.9 |
+| `sepal_width` | 2.0 – 4.4 |
+| `petal_length` | 1.0 – 6.9 |
+| `petal_width` | 0.1 – 2.5 |
 
 ### `POST /api/v1/predict`
 ```bash
@@ -244,9 +274,7 @@ curl http://localhost:8000/metrics \
 Returns HTTP metrics plus a custom metric, `iris_prediction_entropy_bits`
 — the model's uncertainty on each prediction.
 
-**Errors** (422 validation, 401 auth, 400/500 server) all include a
-`request_id` for tracing, without exposing internal details.
-
+**Errors:** every response carries an `X-Request-ID` header for tracing. 400/500 error bodies also include `request_id`. Error responses never expose internal details.
 ---
 
 ## Independent Extension: Grafana Dashboard
@@ -258,7 +286,7 @@ same working dashboard automatically, with no manual setup.
 
 ![Grafana dashboard — request rate, latency, prediction entropy, and error rate](docs/images/grafana_dashboard.jpeg)
 
-Four panels: request rate by endpoint, p95 latency, p95 prediction
+Four panels: request rate by endpoint, average latency, p95 prediction
 entropy by API version, and error rate. This was chosen because the
 Prometheus/entropy monitoring work from Task 18 was already in place —
 a dashboard turns those raw metrics into something readable at a
@@ -276,9 +304,16 @@ combined with math-library thread oversubscription. Fixed by matching
 worker count to available CPU cores and forcing single-threaded math
 libraries: a 3–15x latency improvement, 0% failures throughout.
 
+Set `API_KEY` first (integration tests and the load test both send real
+authenticated requests to a running server):
+```bash
+$env:API_KEY="your-key"      # Windows PowerShell
+export API_KEY="your-key"    # macOS/Linux
+```
+Then:
 ```bash
 pytest -v --ignore=tests/test_integration.py
-$env:API_KEY="<your-key>"; pytest tests/test_integration.py -v   # against a running container
+pytest tests/test_integration.py -v   # against a running container
 locust -f locustfile.py --host http://localhost:8000 --users 100 --spawn-rate 10 --run-time 60s --headless
 ```
 
